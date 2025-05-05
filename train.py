@@ -5,12 +5,18 @@ import open3d as o3d
 import numpy as np
 from tqdm import tqdm
 
+epochs = 5000
+desc = "weight:(20,1,0.5)"
+
+pointcloud_path = "data/output_pointcloud_all.ply"
+log_path = f"log/{epochs}_{desc}.txt"
+
 # ---------- Device ----------
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
 # read pointcloud
-pcd = o3d.io.read_point_cloud("data/output_pointcloud_all.ply")
+pcd = o3d.io.read_point_cloud(pointcloud_path)
 points = np.asarray(pcd.points)
 colors = np.asarray(pcd.colors)
 x = torch.tensor(np.hstack((points, colors)), dtype=torch.float32)  # [N,6], x includes x and c
@@ -28,7 +34,7 @@ epsilon = epsilon.to(device)
 
 # model architecture (多層感知機)
 class SDFNet(nn.Module):
-    def __init__(self, in_dim=6):
+    def __init__(self, in_dim=6): # input dimension got 6 dimensions (x, y, z, r, g, b)
         super(SDFNet, self).__init__()
         self.net = nn.Sequential(
             nn.Linear(in_dim, 128),
@@ -71,21 +77,27 @@ def compute_loss(model, x, x_noisy_full, epsilon):
     grad_norm = grads.norm(dim=1)
     loss_eikonal = ((grad_norm - 1) ** 2).mean()
 
-    return loss_sdf + loss_zero + loss_eikonal
+    return loss_sdf, loss_zero, loss_eikonal
 
 # training example
 model.train()
-epochs = 1000
 pbar = tqdm(range(epochs), desc="Training", ncols=100)
+
+with open(log_path, "w") as f:
+    f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal\n")
 
 for epoch in pbar:
     optimizer.zero_grad()
-    loss = compute_loss(model, x, x_noisy_full, epsilon)
-    loss.backward()
+    loss_sdf, loss_zero, loss_eikonal = compute_loss(model, x, x_noisy_full, epsilon)
+    loss_total = 20 * loss_sdf + 1 * loss_zero + 0.5 * loss_eikonal
+    loss_total.backward()
     optimizer.step()
 
-    # 每次都更新進度條上的 postfix 資訊
-    pbar.set_postfix(loss=loss.item())
+    pbar.set_postfix(loss=loss_total.item())
 
-torch.save(model.state_dict(), "output/sdf_model.pt")
+    # log each component
+    with open(log_path, "a") as f:
+        f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f}\n")
+
+torch.save(model.state_dict(), f"ckpt/sdf_model_{epochs}_{desc}.pt")
 print("Training finished.")

@@ -2,6 +2,8 @@ data/
 checkpoints/
 dust3r/
 output/
+ckpt/
+log/
 
 *.code-workspace
 
