@@ -26,7 +26,7 @@ desc = args.desc
 log_path = args.log_path
 ckpt_path = args.ckpt_path
 
-pointcloud_path = "data/output_pointcloud_1.ply"
+pointcloud_path = "data/output_pointcloud_shoes.ply"
 
 # ---------- Device ----------
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -48,8 +48,8 @@ x_noisy_full = torch.cat([x_noisy, x[:, 3:]], dim=1)  # add the color of x to x^
 x_noisy_full = x_noisy_full.to(device)
 epsilon = epsilon.to(device)
 
-model = SDFNet().to(device)
-# model = SDFNet(pe_freqs=6).to(device)
+# model = SDFNet().to(device)
+model = SDFNet(pe_freqs=6).to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
 # warmup
@@ -69,7 +69,7 @@ with open(log_path, "w") as f:
 for epoch in pbar:
     optimizer.zero_grad()
     loss_sdf, loss_zero, loss_eikonal = compute_loss(model, x, x_noisy_full, epsilon)
-    loss_total = 20 * loss_sdf + 1 * loss_zero + 0.5 * loss_eikonal
+    loss_total = 25 * loss_sdf + 1 * loss_zero + 0.05 * loss_eikonal
     loss_total.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) # clip norm
     optimizer.step()

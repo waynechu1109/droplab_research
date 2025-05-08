@@ -36,7 +36,7 @@ python3 inference.py \
   --res 256 \
   --ckpt_path "$CKPT_DIR/sdf_model_${EPOCHS}_${EXP_NAME}.pt" \
   --output_mesh "$OUT_DIR/sdf_model_${EPOCHS}_${EXP_NAME}.ply"
-echo "[2/3] Fininsh Inference"
+echo "[2/3] Fininsh Inferencing"
 
 # 3) plotting loss courve
 python3 tools/plot_loss.py --log "$LOG_DIR/sdf_model_${EPOCHS}_${EXP_NAME}.txt"

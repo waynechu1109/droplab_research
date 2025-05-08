@@ -22,7 +22,7 @@ def compute_loss(model, x, x_noisy_full, epsilon):
         outputs=f_pred,       # f(xⁿ, c)
         inputs=x,  # input with 6 dimensions: [x, y, z, r, g, b]
         grad_outputs=torch.ones_like(f_pred),
-        create_graph=True,
+        create_graph=False,
         retain_graph=True,
         only_inputs=True
     )[0][:, :3]  # take the gradieant w.r.t. (x, y, z)

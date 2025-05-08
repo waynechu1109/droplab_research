@@ -8,7 +8,7 @@ import trimesh
 from model import SDFNet
 
 # read pointcloud
-pcd = o3d.io.read_point_cloud("data/output_pointcloud_1.ply")
+pcd = o3d.io.read_point_cloud("data/output_pointcloud_shoes.ply")
 
 parser = argparse.ArgumentParser(description="SDFNet inference script.")
 parser.add_argument('--res', type=int, default=256, help="Voxel grid resolution.")
@@ -82,6 +82,7 @@ verts, faces, normals, _ = measure.marching_cubes(sdf_grid, level=0.0, spacing=s
 # for level in [-0.0005, -0.00025, 0, 0.00025, 0.0005]:
 #     verts, faces, normals, _ = measure.marching_cubes(sdf_grid, level=level)
 verts += np.array([x_vals[0], y_vals[0], z_vals[0]])
+verts[:, 0] = -verts[:, 0]
 
 if not np.isfinite(verts).all():
     raise ValueError("Nan/Inf in verts, unable to construct mesh")

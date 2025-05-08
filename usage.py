@@ -17,7 +17,18 @@ VIS = False
 #     'dtu_scan24/images/000002.png'
 # ]
 
-images_list = ['dust3r/croco/assets/Chateau1.png', 'dust3r/croco/assets/Chateau2.png']
+# images_list = ['dust3r/croco/assets/Chateau1.png', 'dust3r/croco/assets/Chateau2.png']
+
+images_list = [
+    # f'dust3r/data/co3d_subset/cup/575_84340_166477/images/frame{num:06d}.jpg'
+    # for num in range(1,202,100)
+    # 'data/church_1.jpg',
+    # 'data/church_2.jpg'
+    # 'data/arc_1.jpg',
+    # 'data/arc_2.jpg'
+    'data/shoes.jpg',
+    'data/shoes.jpg'
+]
 
 def save_ply(filename, points):
     with open(filename, 'w') as f:
@@ -134,7 +145,20 @@ if __name__ == '__main__':
     # combined to a single array
     all_pts3d = np.concatenate(all_pts3d, axis=0)
     all_colors = np.concatenate(all_colors, axis=0)
-    save_colored_ply("data/output_pointcloud_all.ply", all_pts3d, all_colors)
+
+    # # 歸一化到 [-1, 1]
+    # # 計算每個維度的最小與最大值
+    # mins = all_pts3d.min(axis=0)
+    # maxs = all_pts3d.max(axis=0)
+    # # 中心與半範圍
+    # centres = (maxs + mins) / 2.0
+    # scales = (maxs - mins) / 2.0
+    # # 防止除以零
+    # scales[scales == 0] = 1.0
+    # # 執行歸一化
+    # all_pts3d = (all_pts3d - centres) / scales
+
+    save_colored_ply("data/output_pointcloud_.ply", all_pts3d, all_colors)
 
 
     if VIS:   

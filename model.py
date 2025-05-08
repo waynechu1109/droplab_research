@@ -5,64 +5,64 @@ import math
 
 # model architecture
 class SDFNet(nn.Module):
-    def __init__(self, in_dim=6): # input dimension got 6 dimensions (x, y, z, r, g, b)
-        super(SDFNet, self).__init__()
-        self.net = nn.Sequential(
-            nn.Linear(in_dim, 128),
-            nn.ReLU(),
-            nn.Linear(128, 128),
-            nn.ReLU(),
-            nn.Linear(128, 1)
-        )
+    # def __init__(self, in_dim=6): # input dimension got 6 dimensions (x, y, z, r, g, b)
+    #     super(SDFNet, self).__init__()
+    #     self.net = nn.Sequential(
+    #         nn.Linear(in_dim, 128),
+    #         nn.ReLU(),
+    #         nn.Linear(128, 128),
+    #         nn.ReLU(),
+    #         nn.Linear(128, 1)
+    #     )
 
-    def forward(self, x):
-        return self.net(x).squeeze(-1)  # Output shape: [N]
+    # def forward(self, x):
+    #     return self.net(x).squeeze(-1)  # Output shape: [N]
 
 
 
-    # def __init__(self, input_dim=6, hidden_dim=128, num_layers=8, skip_connection_at=4, pe_freqs=6):
-    #     super().__init__()
-    #     self.num_layers = num_layers
-    #     self.skip_connection_at = skip_connection_at
-    #     self.pe_freqs = pe_freqs
+    def __init__(self, input_dim=6, hidden_dim=128, num_layers=8, skip_connection_at=4, pe_freqs=6):
+        super().__init__()
+        self.num_layers = num_layers
+        self.skip_connection_at = skip_connection_at
+        self.pe_freqs = pe_freqs
 
-    #     self.input_dim = 3 + 2 * pe_freqs * 3 + 3  # PE(xyz) + RGB = final input dim
-    #     layers = []
-    #     for i in range(num_layers):
-    #         if i == 0:
-    #             in_dim = self.input_dim
-    #         elif i == skip_connection_at:
-    #             in_dim = hidden_dim + self.input_dim  # skip connection
-    #         else:
-    #             in_dim = hidden_dim
+        self.input_dim = 3 + 2 * pe_freqs * 3 + 3  # PE(xyz) + RGB = final input dim
+        layers = []
+        for i in range(num_layers):
+            if i == 0:
+                in_dim = self.input_dim
+            elif i == skip_connection_at:
+                in_dim = hidden_dim + self.input_dim  # skip connection
+            else:
+                in_dim = hidden_dim
 
-    #         layers.append(nn.Linear(in_dim, hidden_dim))
-    #         layers.append(nn.Softplus(beta=100))
-    #     self.hidden_layers = nn.ModuleList(layers)
-    #     self.output_layer = nn.Linear(hidden_dim, 1)
+            layers.append(nn.Linear(in_dim, hidden_dim))
+            layers.append(nn.Softplus(beta=400))
+        self.hidden_layers = nn.ModuleList(layers)
+        self.output_layer = nn.Linear(hidden_dim, 1)
 
-    # def pos_enc(self, x):
-    #     enc = [x]
-    #     for i in range(self.pe_freqs):
-    #         enc.append(torch.sin((2 ** i) * math.pi * x))
-    #         enc.append(torch.cos((2 ** i) * math.pi * x))
-    #     return torch.cat(enc, dim=-1)
+    def pos_enc(self, x):
+        enc = [x]
+        for i in range(self.pe_freqs):
+            enc.append(torch.sin((2 ** i) * math.pi * x))
+            enc.append(torch.cos((2 ** i) * math.pi * x))
+        return torch.cat(enc, dim=-1)
 
-    # def forward(self, x):  # x: [N, 6] = [xyz, rgb]
-    #     pos = x[:, :3]                  # [N, 3]
-    #     color = x[:, 3:]                # [N, 3]
-    #     pos_encoded = self.pos_enc(pos)  # [N, 3 + 2*pe_freqs*3]
-    #     net_input = torch.cat([pos_encoded, color], dim=-1)  # [N, input_dim]
+    def forward(self, x):  # x: [N, 6] = [xyz, rgb]
+        pos = x[:, :3]                  # [N, 3]
+        color = x[:, 3:]                # [N, 3]
+        pos_encoded = self.pos_enc(pos)  # [N, 3 + 2*pe_freqs*3]
+        net_input = torch.cat([pos_encoded, color], dim=-1)  # [N, input_dim]
 
-    #     h = net_input
-    #     for i in range(self.num_layers):
-    #         lin = self.hidden_layers[i * 2]
-    #         act = self.hidden_layers[i * 2 + 1]
-    #         if i == self.skip_connection_at:
-    #             h = torch.cat([h, net_input], dim=-1)
-    #         h = act(lin(h))
+        h = net_input
+        for i in range(self.num_layers):
+            lin = self.hidden_layers[i * 2]
+            act = self.hidden_layers[i * 2 + 1]
+            if i == self.skip_connection_at:
+                h = torch.cat([h, net_input], dim=-1)
+            h = act(lin(h))
 
-    #     return self.output_layer(h).squeeze(-1)
+        return self.output_layer(h).squeeze(-1)
 
 
     # def __init__(self):
