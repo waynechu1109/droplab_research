@@ -1,3 +1,4 @@
+import argparse
 import torch
 import torch.nn as nn
 import numpy as np
@@ -6,7 +7,18 @@ import open3d as o3d
 import trimesh
 from model import SDFNet
 
-res = 256  # voxel resolution
+# read pointcloud
+pcd = o3d.io.read_point_cloud("data/output_pointcloud_1.ply")
+
+parser = argparse.ArgumentParser(description="SDFNet inference script.")
+parser.add_argument('--res', type=int, default=256, help="Voxel grid resolution.")
+parser.add_argument('--ckpt_path', type=str, required=True, help="Path to model checkpoint.")
+parser.add_argument('--output_mesh', type=str, required=True, help="Output mesh file path.")
+args = parser.parse_args()
+
+res = args.res  # voxel resolution
+ckpt_path = args.ckpt_path
+output_mesh = args.output_mesh
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = SDFNet().to(device)
@@ -15,15 +27,13 @@ model = SDFNet().to(device)
 try:
     # model.load_state_dict(torch.load("ckpt/sdf_model.pt"))
     # torch.load("ckpt/sdf_model.pt", weights_only=True)
-    state_dict = torch.load("ckpt/sdf_model_5000_pointnetPE_n0.01_weight:(20,1,0.5)_v2.pt", map_location=device, weights_only=True)
+    state_dict = torch.load(ckpt_path, map_location=device, weights_only=True)
     model.load_state_dict(state_dict)
 except Exception as e:
     print("Fail to load model:", e)
 
 model.eval()
 
-# read pointcloud
-pcd = o3d.io.read_point_cloud("data/output_pointcloud_1.ply")
 points = np.asarray(pcd.points)
 # compute the bounding box
 min_bound = points.min(axis=0)  # [x_min, y_min, z_min]
@@ -78,7 +88,7 @@ if not np.isfinite(verts).all():
 
 # construct mesh
 mesh = trimesh.Trimesh(vertices=verts, faces=faces, process=False)
-mesh.export("output/sdf_surface_pointnetPE_n0.01_5000_weight:(20,1,0.5)_v2.ply")
+mesh.export(output_mesh)
 print("Mesh exported to output/sdf_surface.ply")
 
 

@@ -1,3 +1,4 @@
+import argparse
 import torch
 import open3d as o3d
 import numpy as np
@@ -6,16 +7,26 @@ from model import SDFNet
 from loss import compute_loss
 from torch.optim.lr_scheduler import LambdaLR
 
-warmup = False
-epochs = 5000
-warmup_epochs = 500
-lr = 0.005
-sigma = 0.01
+parser = argparse.ArgumentParser(description="SDFNet training script.")
+parser.add_argument('--epochs', type=int, default=5000, help="Number of training epochs.")
+parser.add_argument('--lr', type=float, default=0.005, help="Learning rate.")
+parser.add_argument('--sigma', type=float, default=0.01, help="Noise sigma.")
+parser.add_argument('--desc', type=str, required=True, help="Experiment description.")
+parser.add_argument('--log_path', type=str, required=True, help="Log file path.")
+parser.add_argument('--ckpt_path', type=str, required=True, help="Checkpoint save path.")
+args = parser.parse_args()
 
-desc = "pointnetPE_n0.01_weight:(20,1,0.5)_v2"
+warmup = False
+epochs = args.epochs
+warmup_epochs = 500
+lr = args.lr
+sigma = args.sigma
+
+desc = args.desc
+log_path = args.log_path
+ckpt_path = args.ckpt_path
 
 pointcloud_path = "data/output_pointcloud_1.ply"
-log_path = f"log/{epochs}_{desc}.txt"
 
 # ---------- Device ----------
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -37,8 +48,8 @@ x_noisy_full = torch.cat([x_noisy, x[:, 3:]], dim=1)  # add the color of x to x^
 x_noisy_full = x_noisy_full.to(device)
 epsilon = epsilon.to(device)
 
-# model = SDFNet().to(device)
-model = SDFNet(pe_freqs=6).to(device)
+model = SDFNet().to(device)
+# model = SDFNet(pe_freqs=6).to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
 # warmup
@@ -71,5 +82,5 @@ for epoch in pbar:
     with open(log_path, "a") as f:
         f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f}\n")
 
-torch.save(model.state_dict(), f"ckpt/sdf_model_{epochs}_{desc}.pt")
+torch.save(model.state_dict(), ckpt_path)
 print("Training finished.")
