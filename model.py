@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-import tinycudann as tcnn  # Instant-NGP 的 CUDA 加速 hash encoding 實現
+# import tinycudann as tcnn  # Instant-NGP 的 CUDA 加速 hash encoding 實現
 import math
 
 # model architecture

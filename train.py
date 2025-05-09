@@ -6,6 +6,7 @@ from tqdm import tqdm
 from model import SDFNet
 from loss import compute_loss
 from torch.optim.lr_scheduler import LambdaLR
+from torch.optim.lr_scheduler import MultiStepLR
 
 parser = argparse.ArgumentParser(description="SDFNet training script.")
 parser.add_argument('--epochs', type=int, default=5000, help="Number of training epochs.")
@@ -16,9 +17,9 @@ parser.add_argument('--log_path', type=str, required=True, help="Log file path."
 parser.add_argument('--ckpt_path', type=str, required=True, help="Checkpoint save path.")
 args = parser.parse_args()
 
-warmup = False
+lr_tune = True
 epochs = args.epochs
-warmup_epochs = 500
+lr_tune_epochs = 500
 lr = args.lr
 sigma = args.sigma
 
@@ -52,13 +53,13 @@ epsilon = epsilon.to(device)
 model = SDFNet(pe_freqs=6).to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
-# warmup
-if warmup:
-    scheduler = LambdaLR(
-        optimizer,
-        lr_lambda=lambda epoch: min(1.0, epoch / warmup_epochs)
-    )
-
+# lr_tune
+if lr_tune:
+    scheduler = MultiStepLR(
+    optimizer,
+    milestones=[epochs*0.2, epochs*0.4, epochs*0.6, epochs*0.8],
+    gamma=0.5
+)
 # training example
 model.train()
 pbar = tqdm(range(epochs), desc="Training", ncols=100)
@@ -73,10 +74,13 @@ for epoch in pbar:
     loss_total.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) # clip norm
     optimizer.step()
-    if warmup:
+    if lr_tune:
         scheduler.step() # warming up
 
-    pbar.set_postfix(loss=loss_total.item())
+    pbar.set_postfix(
+        loss=loss_total.item(),
+        lr=optimizer.param_groups[0]['lr']
+    )
 
     # log each component
     with open(log_path, "a") as f:

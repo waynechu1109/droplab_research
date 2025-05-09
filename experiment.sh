@@ -39,5 +39,5 @@ python3 inference.py \
 echo "[2/3] Fininsh Inferencing"
 
 # 3) plotting loss courve
-python3 tools/plot_loss.py --log "$LOG_DIR/sdf_model_${EPOCHS}_${EXP_NAME}.txt"
-echo "[3/3] Fininsh Plotting Loss Curve"
+# python3 tools/plot_loss.py --log "$LOG_DIR/sdf_model_${EPOCHS}_${EXP_NAME}.txt"
+# echo "[3/3] Fininsh Plotting Loss Curve"
