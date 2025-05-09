@@ -14,15 +14,16 @@ def compute_loss(model, x, x_noisy_full, epsilon):
     loss_zero = f_x.abs().mean()
 
     # Part 3: Eikonal: ||∇f(x^n, c) - 1||
-    # x_noisy_full.requires_grad_() # enable partial differentiation
-    x.requires_grad_()
-    # f_pred = model(x_noisy_full)
-    f_pred = model(x)
+    x_noisy_full.requires_grad_(True) # enable partial differentiation
+    # x.requires_grad_()
+    f_pred = model(x_noisy_full)
+    # f_pred = model(x)
     grads = torch.autograd.grad(
         outputs=f_pred,       # f(xⁿ, c)
-        inputs=x,  # input with 6 dimensions: [x, y, z, r, g, b]
+        # inputs=x,  # input with 6 dimensions: [x, y, z, r, g, b]
+        inputs=x_noisy_full,
         grad_outputs=torch.ones_like(f_pred),
-        create_graph=False,
+        create_graph=True,
         retain_graph=True,
         only_inputs=True
     )[0][:, :3]  # take the gradieant w.r.t. (x, y, z)
