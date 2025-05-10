@@ -1,4 +1,6 @@
 import sys
+import argparse
+import open3d as o3d
 sys.path.append('./dust3r')
 
 from dust3r.inference import inference
@@ -20,14 +22,20 @@ VIS = False
 # images_list = ['dust3r/croco/assets/Chateau1.png', 'dust3r/croco/assets/Chateau2.png']
 
 images_list = [
-    # f'dust3r/data/co3d_subset/cup/575_84340_166477/images/frame{num:06d}.jpg'
-    # for num in range(1,202,100)
+    # f'dust3r/data/co3d_subset/apple/110_13051_23361/images/frame{num:06d}.jpg'
+    # for num in range(1,202,30)
+
+    f'dust3r/data/co3d_subset/car/621_101777_202473/images/frame{num:06d}.jpg'
+    for num in range(1,202,30)
+
     # 'data/church_1.jpg',
     # 'data/church_2.jpg'
+
     # 'data/arc_1.jpg',
     # 'data/arc_2.jpg'
-    'data/shoes.jpg',
-    'data/shoes.jpg'
+
+    # 'data/shoes.jpg',
+    # 'data/shoes.jpg'
 ]
 
 def save_ply(filename, points):
@@ -48,6 +56,14 @@ def save_colored_ply(filename, points, colors):
             f.write(f"{p[0]} {p[1]} {p[2]} {c[0]} {c[1]} {c[2]}\n")
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Dust3r inference and point cloud downsampling')
+    parser.add_argument('--max_points', type=int, default=150000,
+                        help='the max number of points after downsample')
+    parser.add_argument('--voxel_size', type=float, default=0.00001,
+                        help='Voxel Grid 大小，建議佔 bbox 對角線的 1% 左右')
+    args = parser.parse_args()
+
+
     device = 'cuda'
     batch_size = 1
     schedule = 'cosine'
@@ -116,19 +132,6 @@ if __name__ == '__main__':
     # visualize reconstruction
     # scene.show()
 
-    # find 2D-2D matches between the two images
-    if VIS:
-        from dust3r.utils.geometry import find_reciprocal_matches, xy_grid
-        pts2d_list, pts3d_list = [], []
-        for i in range(len(images_list)):
-            conf_i = confidence_masks[i].cpu().numpy()
-            pts2d_list.append(xy_grid(*imgs[i].shape[:2][::-1])[conf_i])  # imgs[i].shape[:2] = (H, W)
-            pts3d_list.append(pts3d[i].detach().cpu().numpy()[conf_i])
-        reciprocal_in_P2, nn2_in_P1, num_matches = find_reciprocal_matches(*pts3d_list)
-        print(f'found {num_matches} matches')
-        matches_im1 = pts2d_list[1][reciprocal_in_P2]
-        matches_im0 = pts2d_list[0][nn2_in_P1][reciprocal_in_P2]
-
     # save the point cloud
     all_pts3d = []
     all_colors = []
@@ -158,10 +161,41 @@ if __name__ == '__main__':
     # # 執行歸一化
     # all_pts3d = (all_pts3d - centres) / scales
 
+    # --- 下采樣開始 ---
+    # 隨機抽樣
+    N = all_pts3d.shape[0]
+    if N > args.max_points:
+        idx = np.random.choice(N, size=args.max_points, replace=False)
+        all_pts3d = all_pts3d[idx]
+        all_colors = all_colors[idx]
+
+    # Voxel Grid 下采樣
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(all_pts3d)
+    pcd.colors = o3d.utility.Vector3dVector(all_colors.astype(float) / 255.0)
+    pcd_down = pcd.voxel_down_sample(voxel_size=args.voxel_size)
+    all_pts3d = np.asarray(pcd_down.points)
+    all_colors = (np.asarray(pcd_down.colors) * 255).astype(np.uint8)
+    # --- 下采樣結束 ---
+
     save_colored_ply("data/output_pointcloud_.ply", all_pts3d, all_colors)
+        
 
 
     if VIS:   
+        # find 2D-2D matches between the two images
+        from dust3r.utils.geometry import find_reciprocal_matches, xy_grid
+        pts2d_list, pts3d_list = [], []
+        for i in range(len(images_list)):
+            conf_i = confidence_masks[i].cpu().numpy()
+            pts2d_list.append(xy_grid(*imgs[i].shape[:2][::-1])[conf_i])  # imgs[i].shape[:2] = (H, W)
+            pts3d_list.append(pts3d[i].detach().cpu().numpy()[conf_i])
+        reciprocal_in_P2, nn2_in_P1, num_matches = find_reciprocal_matches(*pts3d_list)
+        print(f'found {num_matches} matches')
+        matches_im1 = pts2d_list[1][reciprocal_in_P2]
+        matches_im0 = pts2d_list[0][nn2_in_P1][reciprocal_in_P2]
+
+
         # visualize a few matches
         from matplotlib import pyplot as pl
         n_viz = 10

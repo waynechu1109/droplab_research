@@ -29,15 +29,14 @@ def compute_loss(model, x, x_noisy_full, epsilon):
     )[0][:, :3]  # take the gradieant w.r.t. (x, y, z)
 
     grad_norm = torch.norm(grads, dim=-1)
-    loss_eikonal = ((grad_norm - 1) ** 2).mean()
+    # loss_eikonal = ((grad_norm - 1) ** 2).mean()
 
-    # # narrow band mask: 只在靠近表面的位置計算 loss
-    # sdf_abs = torch.abs(f_pred.detach().squeeze(-1))  # detach 避免回傳梯度
-    # mask = sdf_abs < 0.2  # threshold 可調整：0.05～0.2 之間都可嘗試
-
-    # if mask.any():
-    #     loss_eikonal = ((grad_norm[mask] - 1) ** 2).mean()
-    # else:
-    #     loss_eikonal = torch.tensor(0.0, device=f_pred.device)
+    # narrow band mask: 只在靠近表面的位置計算 loss
+    sdf_abs = torch.abs(f_pred.detach().squeeze(-1))  # detach 避免回傳梯度
+    mask = sdf_abs < 0.05  # threshold 可調整：0.05～0.2 之間都可嘗試
+    if mask.any():
+        loss_eikonal = ((grad_norm[mask] - 1) ** 2).mean()
+    else:
+        loss_eikonal = torch.tensor(0.0, device=f_pred.device)
 
     return loss_sdf, loss_zero, loss_eikonal

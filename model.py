@@ -37,10 +37,12 @@ class SDFNet(nn.Module):
                 in_dim = hidden_dim
 
             layers.append(nn.Linear(in_dim, hidden_dim))
-            layers.append(nn.Softplus(beta=400))
+            layers.append(nn.Softplus(beta=800))
+            # layers.append(nn.ReLU())
         self.hidden_layers = nn.ModuleList(layers)
         self.output_layer = nn.Linear(hidden_dim, 1)
 
+    # position encoding: 透過多個不同頻率的 sin/cos，把座標映射到更豐富的頻域空間，有助捕捉細節。
     def pos_enc(self, x):
         enc = [x]
         for i in range(self.pe_freqs):
@@ -58,8 +60,11 @@ class SDFNet(nn.Module):
         for i in range(self.num_layers):
             lin = self.hidden_layers[i * 2]
             act = self.hidden_layers[i * 2 + 1]
+
+            # skip connection: 讓後續層直接存取最初的特徵，減輕梯度消失，並加速學習。
             if i == self.skip_connection_at:
                 h = torch.cat([h, net_input], dim=-1)
+
             h = act(lin(h))
 
         return self.output_layer(h).squeeze(-1)
@@ -99,6 +104,8 @@ class SDFNet(nn.Module):
     #     encoded = self.encoder(pos)
     #     features = torch.cat([encoded, color], dim=-1)
     #     return self.color_fc(features).squeeze(-1)
+
+
 
     # def __init__(self, n_levels=16, n_features_per_level=2, log2_hashmap_size=19, base_resolution=16, per_level_scale=2.0):
     #     super().__init__()

@@ -62,7 +62,7 @@ if lr_tune:
 )
 # training example
 model.train()
-pbar = tqdm(range(epochs), desc="Training", ncols=100)
+pbar = tqdm(range(epochs), desc="Training", ncols=75)
 
 with open(log_path, "w") as f:
     f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal\n")
@@ -83,7 +83,7 @@ for epoch in pbar:
     torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) # clip norm
     optimizer.step()
     if lr_tune:
-        scheduler.step() # warming up
+        scheduler.step() # step lr
 
     pbar.set_postfix(
         loss=loss_total.item(),
