@@ -33,7 +33,7 @@ echo "[1/3] Fininsh Training"
 
 # 2) inference
 python3 inference.py \
-  --res 256 \
+  --res 420 \
   --ckpt_path "$CKPT_DIR/sdf_model_${EPOCHS}_${EXP_NAME}.pt" \
   --output_mesh "$OUT_DIR/sdf_model_${EPOCHS}_${EXP_NAME}.ply"
 echo "[2/3] Fininsh Inferencing"
@@ -41,3 +41,7 @@ echo "[2/3] Fininsh Inferencing"
 # 3) plotting loss courve
 # python3 tools/plot_loss.py --log "$LOG_DIR/sdf_model_${EPOCHS}_${EXP_NAME}.txt"
 # echo "[3/3] Fininsh Plotting Loss Curve"
+
+
+
+# ./experiment.sh Pointnet_PE6_beta400_4_.5_.06_lrTune 2500 0.005 0.01

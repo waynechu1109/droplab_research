@@ -70,7 +70,15 @@ with open(log_path, "w") as f:
 for epoch in pbar:
     optimizer.zero_grad()
     loss_sdf, loss_zero, loss_eikonal = compute_loss(model, x, x_noisy_full, epsilon)
-    loss_total = 10 * loss_sdf + 1 * loss_zero + 0.05 * loss_eikonal
+
+    # -------------------weight setting--------------------
+    # loss_total = 5 * loss_sdf + 0.5 * loss_zero + 0.05 * loss_eikonal
+    eik_init, eik_final, ramp = 0.01, 0.05, 750
+    w_eik = eik_init + (eik_final - eik_init) * min(epoch/ramp, 1.0)
+    loss_total = 5.0 * loss_sdf \
+            + 0.5 * loss_zero \
+            + w_eik * loss_eikonal
+    
     loss_total.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) # clip norm
     optimizer.step()
