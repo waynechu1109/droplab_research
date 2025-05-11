@@ -49,8 +49,8 @@ x_noisy_full = torch.cat([x_noisy, x[:, 3:]], dim=1)  # add the color of x to x^
 x_noisy_full = x_noisy_full.to(device)
 epsilon = epsilon.to(device)
 
-# model = SDFNet().to(device)
-model = SDFNet(pe_freqs=6).to(device)
+model = SDFNet().to(device)
+# model = SDFNet(pe_freqs=6).to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
 # lr_tune

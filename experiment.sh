@@ -33,7 +33,7 @@ echo "[1/3] Fininsh Training"
 
 # 2) inference
 python3 inference.py \
-  --res 420 \
+  --res 300 \
   --ckpt_path "$CKPT_DIR/sdf_model_${EPOCHS}_${EXP_NAME}.pt" \
   --output_mesh "$OUT_DIR/sdf_model_${EPOCHS}_${EXP_NAME}.ply"
 echo "[2/3] Fininsh Inferencing"
@@ -44,4 +44,4 @@ echo "[2/3] Fininsh Inferencing"
 
 
 
-# ./experiment.sh Pointnet_PE6_beta400_4_.5_.06_lrTune 2500 0.005 0.01
+# ./experiment.sh Hashz_beta800_5_.5_.01to.05_narrow_band_msk0.05 2500 0.005 0.01

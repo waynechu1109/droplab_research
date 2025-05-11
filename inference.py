@@ -7,7 +7,7 @@ import open3d as o3d
 import trimesh
 from model import SDFNet
 
-# read pointcloud
+# read pointcloud for the range to construct the mesh
 pcd = o3d.io.read_point_cloud("data/output_pointcloud_shoes.ply")
 
 parser = argparse.ArgumentParser(description="SDFNet inference script.")
@@ -32,8 +32,10 @@ try:
 except Exception as e:
     print("Fail to load model:", e)
 
+# set the model to eval() mode for inference
 model.eval()
 
+# set the margin for mesh construction
 points = np.asarray(pcd.points)
 # compute the bounding box
 min_bound = points.min(axis=0)  # [x_min, y_min, z_min]
@@ -55,6 +57,7 @@ color_cond = np.array([[0.5, 0.5, 0.5]])
 colors = np.repeat(color_cond, len(points), axis=0)
 query = np.concatenate([points, colors], axis=1)  # [M, 6]
 
+# batched the pcd then input them to the model
 def batched_query(model, query_np, batch_size=32768):
     out = []
     with torch.no_grad():
