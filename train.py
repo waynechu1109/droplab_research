@@ -7,6 +7,7 @@ from model import SDFNet
 from loss import compute_loss
 from torch.optim.lr_scheduler import LambdaLR
 from torch.optim.lr_scheduler import MultiStepLR
+from torch.optim.lr_scheduler import CosineAnnealingLR
 
 parser = argparse.ArgumentParser(description="SDFNet training script.")
 parser.add_argument('--epochs', type=int, default=5000, help="Number of training epochs.")
@@ -51,15 +52,26 @@ epsilon = epsilon.to(device)
 
 model = SDFNet().to(device)
 # model = SDFNet(pe_freqs=6).to(device)
-optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+# optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+optimizer = torch.optim.AdamW(
+    model.parameters(),
+    lr=lr,
+    weight_decay=1e-2
+)
 
 # lr_tune
-if lr_tune:
-    scheduler = MultiStepLR(
+# if lr_tune:
+# scheduler = MultiStepLR(
+#     optimizer,
+#     milestones=[epochs*0.2, epochs*0.4, epochs*0.6, epochs*0.8],
+#     gamma=0.5
+# )
+scheduler = CosineAnnealingLR(
     optimizer,
-    milestones=[epochs*0.2, epochs*0.4, epochs*0.6, epochs*0.8],
-    gamma=0.5
+    T_max=epochs,      
+    eta_min=1e-5             # lowest lr
 )
+
 # training example
 model.train()
 pbar = tqdm(range(epochs), desc="Training", ncols=75)
@@ -75,15 +87,15 @@ for epoch in pbar:
     # loss_total = 5 * loss_sdf + 0.5 * loss_zero + 0.05 * loss_eikonal
     eik_init, eik_final, ramp = 0.01, 0.05, 750
     w_eik = eik_init + (eik_final - eik_init) * min(epoch/ramp, 1.0)
-    loss_total = 5.0 * loss_sdf \
+    loss_total = 4.8 * loss_sdf \
             + 0.5 * loss_zero \
             + w_eik * loss_eikonal
     
     loss_total.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) # clip norm
     optimizer.step()
-    if lr_tune:
-        scheduler.step() # step lr
+    # if lr_tune:
+    scheduler.step() # step lr
 
     pbar.set_postfix(
         loss=loss_total.item(),

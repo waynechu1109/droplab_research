@@ -5,6 +5,8 @@ output/
 ckpt/
 log/
 
+*.jpg
+*.png
 *.code-workspace
 
 # Byte-compiled / optimized / DLL files

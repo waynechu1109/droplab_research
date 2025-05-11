@@ -17,7 +17,7 @@ class SDFNet(nn.Module):
         self.num_layers = num_layers
         self.skip = skip_connection_at
 
-        # 只对 xyz 做 PE，所以 input_dim = 3 + 2*pe_freqs*3
+        # PE for xyz, so input_dim = 3 + 2*pe_freqs*3
         self.input_dim = 3 + 2 * pe_freqs * 3
 
         layers = []
