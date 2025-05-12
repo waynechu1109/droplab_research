@@ -25,8 +25,8 @@ images_list = [
     # f'dust3r/data/co3d_subset/apple/110_13051_23361/images/frame{num:06d}.jpg'
     # for num in range(1,202,30)
 
-    f'dust3r/data/co3d_subset/car/621_101777_202473/images/frame{num:06d}.jpg'
-    for num in range(1,202,30)
+    # f'dust3r/data/co3d_subset/car/621_101777_202473/images/frame{num:06d}.jpg'
+    # for num in range(1,202,30)
 
     # 'data/church_1.jpg',
     # 'data/church_2.jpg'
@@ -34,8 +34,8 @@ images_list = [
     # 'data/arc_1.jpg',
     # 'data/arc_2.jpg'
 
-    # 'data/shoes.jpg',
-    # 'data/shoes.jpg'
+    'data/shoes.jpg',
+    'data/shoes.jpg'
 ]
 
 def save_ply(filename, points):
@@ -109,6 +109,11 @@ if __name__ == '__main__':
     pts3d = scene.get_pts3d()
     confidence_masks = scene.get_masks()
 
+    # print(f'view1: {view1}')
+    # print(f'view2: {view2}')
+    # print(f'pred1: {pred1}')
+    # print(f'pred2: {pred2}')
+
     # print(f'type(focals): {type(focals)}')
     # print(f'size(focals): {focals.size()}')
     # print(f'focals: {focals}')
@@ -169,16 +174,34 @@ if __name__ == '__main__':
         all_pts3d = all_pts3d[idx]
         all_colors = all_colors[idx]
 
-    # Voxel Grid 下采樣
+    # Voxel Grid Down Sampling
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(all_pts3d)
     pcd.colors = o3d.utility.Vector3dVector(all_colors.astype(float) / 255.0)
-    pcd_down = pcd.voxel_down_sample(voxel_size=args.voxel_size)
-    all_pts3d = np.asarray(pcd_down.points)
-    all_colors = (np.asarray(pcd_down.colors) * 255).astype(np.uint8)
-    # --- 下采樣結束 ---
 
-    save_colored_ply("data/output_pointcloud_.ply", all_pts3d, all_colors)
+    # 先下採樣
+    pcd_down = pcd.voxel_down_sample(voxel_size=args.voxel_size)
+
+    # 再估算法向量（重要！）
+    pcd_down.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamKNN(knn=30))
+
+    # 儲存帶顏色與法向量的點雲
+    o3d.io.write_point_cloud("data/output_pointcloud_.ply", pcd_down)
+
+    # pcd = o3d.geometry.PointCloud()
+    # pcd.points = o3d.utility.Vector3dVector(all_pts3d)
+    # pcd.colors = o3d.utility.Vector3dVector(all_colors.astype(float) / 255.0)
+
+    # # Calculate Normals
+    # pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamKNN(knn=30))
+
+    # pcd_down = pcd.voxel_down_sample(voxel_size=args.voxel_size)
+    # all_pts3d = np.asarray(pcd_down.points)
+    # all_colors = (np.asarray(pcd_down.colors) * 255).astype(np.uint8)
+    # # --- 下采樣結束 ---
+
+    # # save_colored_ply("data/output_pointcloud_.ply", all_pts3d, all_colors)
+    # o3d.io.write_point_cloud("data/output_pointcloud_.ply", all_pts3d)
         
 
 
