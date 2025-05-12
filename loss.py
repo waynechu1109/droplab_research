@@ -1,6 +1,58 @@
 import torch
 import torch.nn.functional as F
 
+def compute_edge_loss(x: torch.Tensor,
+                      f_x: torch.Tensor,
+                      k: int = 8,
+                      alpha: float = 0.1,
+                      chunk_size: int = 2048) -> torch.Tensor:
+    """
+    颜色保边正则：
+      L_edge = mean_{i,j in N(i)} [ exp(-α||c_i - c_j||^2) * (f_x[i] - f_x[j])^2 ]
+    Args:
+      x:    [N,6] = [xyz, rgb], 数据点和对应颜色
+      f_x:  [N]   = 对应位置的 SDF 预测
+      k:     int  = 每点最近邻数量
+      alpha: float= 颜色相似度衰减系数
+    Returns:
+      loss_edge: 标量 Tensor
+    """
+    # 1) extract position & color
+    pts = x[:, :3]   # [N,3]
+    rgb = x[:, 3:].float() / 255.0 
+    N = pts.shape[0]
+
+    # 2) 构建 k-NN 邻域（排除自身）
+    nn_idx_chunks = []
+    for i in range(0, N, chunk_size):
+        end = min(i + chunk_size, N)
+        # [chunk_size, 3] vs [N, 3]
+        dist_chunk = torch.cdist(pts[i:end], pts)     # [b, N]
+        _, idx = dist_chunk.topk(k+1, dim=1, largest=False)
+        nn_idx_chunks.append(idx[:, 1:])              # 去掉自己
+    nn_idx = torch.cat(nn_idx_chunks, dim=0)          # [N, k]
+
+    # 3) 展平成对索引
+    N = x.shape[0]
+    i_idx = torch.arange(N, device=x.device).unsqueeze(1).expand(-1, k).reshape(-1)
+    j_idx = nn_idx.reshape(-1)
+
+    # 4) 取出对应颜色和 SDF
+    c_i = rgb[i_idx]    # [N*k,3]
+    c_j = rgb[j_idx]    # [N*k,3]
+    f_i = f_x[i_idx]    # [N*k]
+    f_j = f_x[j_idx]    # [N*k]
+
+    # 5) 计算权重 & 差值
+    color_diff2 = torch.sum((c_i - c_j)**2, dim=-1)           # [N*k]
+    # w = torch.exp(-alpha * color_diff2)                       # [N*k]
+    w = torch.clamp(1.0 - color_diff2, min=0.0)
+    sdf_diff2 = (f_i - f_j)**2                                # [N*k]
+
+    # 6) 加权平均
+    loss_edge = (w * sdf_diff2).mean()
+    return 10000*loss_edge
+
 # total loss calculation
 def compute_loss(model, x, x_noisy_full, epsilon):
     f_x = model(x)              # f(x, c) 應接收完整 6 維輸入
@@ -39,4 +91,7 @@ def compute_loss(model, x, x_noisy_full, epsilon):
     else:
         loss_eikonal = torch.tensor(0.0, device=f_pred.device)
 
-    return loss_sdf, loss_zero, loss_eikonal
+    # edge loss
+    loss_edge = compute_edge_loss(x, f_x, k=8, alpha=10.0)
+
+    return loss_sdf, loss_zero, loss_eikonal, loss_edge

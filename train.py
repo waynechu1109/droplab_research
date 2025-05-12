@@ -77,19 +77,20 @@ model.train()
 pbar = tqdm(range(epochs), desc="Training", ncols=75)
 
 with open(log_path, "w") as f:
-    f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal\n")
+    f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_edge\n")
 
 for epoch in pbar:
     optimizer.zero_grad()
-    loss_sdf, loss_zero, loss_eikonal = compute_loss(model, x, x_noisy_full, epsilon)
+    loss_sdf, loss_zero, loss_eikonal, loss_edge = compute_loss(model, x, x_noisy_full, epsilon)
 
     # -------------------weight setting--------------------
     # loss_total = 5 * loss_sdf + 0.5 * loss_zero + 0.05 * loss_eikonal
     eik_init, eik_final, ramp = 0.01, 0.05, 750
     w_eik = eik_init + (eik_final - eik_init) * min(epoch/ramp, 1.0)
-    loss_total = 4.8 * loss_sdf \
+    loss_total = 4.2 * loss_sdf \
             + 0.5 * loss_zero \
-            + w_eik * loss_eikonal
+            + w_eik * loss_eikonal \
+            + 0.1 * loss_edge
     
     loss_total.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) # clip norm
@@ -104,7 +105,7 @@ for epoch in pbar:
 
     # log each component
     with open(log_path, "a") as f:
-        f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f}\n")
+        f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f},{loss_edge.item():.6f}\n")
 
 torch.save(model.state_dict(), ckpt_path)
 print("Training finished.")

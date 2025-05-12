@@ -44,4 +44,4 @@ echo "[2/3] Fininsh Inferencing"
 
 
 
-# ./experiment.sh Hashz_beta800_5_.5_.01to.05_narrow_band_msk0.05 2500 0.005 0.01
+# ./experiment.sh NeuS_beta100_4.2_.5_.01to.05_.1_adamw_cosAnn_narrow_band_msk0.05 2500 0.005 0.01
