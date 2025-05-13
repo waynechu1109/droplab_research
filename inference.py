@@ -8,7 +8,7 @@ import trimesh
 from model import SDFNet
 
 # read pointcloud for the range to construct the mesh
-pcd = o3d.io.read_point_cloud("data/output_pointcloud_shoes.ply")
+pcd = o3d.io.read_point_cloud("data/output_pointcloud_shoes_normal.ply")
 
 parser = argparse.ArgumentParser(description="SDFNet inference script.")
 parser.add_argument('--res', type=int, default=256, help="Voxel grid resolution.")

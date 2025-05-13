@@ -1,6 +1,43 @@
 import torch
 import torch.nn.functional as F
 
+def compute_normal_loss(model, x, normals, batch_size=8192):
+    N = x.shape[0]
+    total_loss = 0.0
+    device = x.device
+
+    for i in range(0, N, batch_size):
+        x_batch = x[i:i+batch_size].clone().detach().requires_grad_(True)
+        normals_batch = normals[i:i+batch_size]
+
+        f_pred = model(x_batch)
+
+        grads = torch.autograd.grad(
+            outputs=f_pred,
+            inputs=x_batch,
+            grad_outputs=torch.ones_like(f_pred),
+            create_graph=True,
+            retain_graph=True,
+            only_inputs=True
+        )[0][:, :3]
+
+        # only calculate normal loss near the surfaces
+        mask = (f_pred.abs() < 0.05)
+        if mask.any():
+            grads = grads[mask]
+            normals_batch = normals_batch[mask]
+
+        # cos_sim = F.cosine_similarity(grads, normals_batch, dim=1)
+        grads = F.normalize(grads, dim=1)
+        normals_batch = F.normalize(normals_batch, dim=1)
+        cos_sim = F.cosine_similarity(grads, normals_batch, dim=1)
+        loss = ((1 - cos_sim) ** 2).mean()
+        # total_loss += loss.item() * len(x_batch)
+        total_loss += loss * len(x_batch)
+
+    # return torch.tensor(total_loss / N, device=device)
+    return total_loss / N
+
 def compute_edge_loss(x: torch.Tensor,
                       f_x: torch.Tensor,
                       k: int = 8,
@@ -54,7 +91,8 @@ def compute_edge_loss(x: torch.Tensor,
     return 10000*loss_edge
 
 # total loss calculation
-def compute_loss(model, x, x_noisy_full, epsilon):
+def compute_loss(model, x, x_noisy_full, epsilon, normals):
+    x.requires_grad_(True)
     f_x = model(x)              # f(x, c) 應接收完整 6 維輸入
     f_x_noisy = model(x_noisy_full)
 
@@ -91,7 +129,11 @@ def compute_loss(model, x, x_noisy_full, epsilon):
     else:
         loss_eikonal = torch.tensor(0.0, device=f_pred.device)
 
-    # edge loss
-    loss_edge = compute_edge_loss(x, f_x, k=8, alpha=10.0)
+    # Part 4: Edge loss
+    # loss_edge = compute_edge_loss(x, f_x, k=8, alpha=10.0)
 
-    return loss_sdf, loss_zero, loss_eikonal, loss_edge
+    # Part 5: Normal loss
+    normals = torch.tensor(normals, dtype=torch.float32, device=x.device)
+    loss_normal = compute_normal_loss(model, x, normals, batch_size=10000)
+    
+    return loss_sdf, loss_zero, loss_eikonal, loss_normal

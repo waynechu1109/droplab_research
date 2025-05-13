@@ -57,7 +57,7 @@ def save_colored_ply(filename, points, colors):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Dust3r inference and point cloud downsampling')
-    parser.add_argument('--max_points', type=int, default=150000,
+    parser.add_argument('--max_points', type=int, default=75000,
                         help='the max number of points after downsample')
     parser.add_argument('--voxel_size', type=float, default=0.00001,
                         help='Voxel Grid 大小，建議佔 bbox 對角線的 1% 左右')
@@ -184,6 +184,7 @@ if __name__ == '__main__':
 
     # 再估算法向量（重要！）
     pcd_down.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamKNN(knn=30))
+    pcd_down.orient_normals_consistent_tangent_plane(k=30)
 
     # 儲存帶顏色與法向量的點雲
     o3d.io.write_point_cloud("data/output_pointcloud_.ply", pcd_down)

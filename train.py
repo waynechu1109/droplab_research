@@ -28,7 +28,7 @@ desc = args.desc
 log_path = args.log_path
 ckpt_path = args.ckpt_path
 
-pointcloud_path = "data/output_pointcloud_shoes.ply"
+pointcloud_path = "data/output_pointcloud_shoes_normal.ply"
 
 # ---------- Device ----------
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -36,10 +36,17 @@ print(f"Using device: {device}")
 
 # read pointcloud
 pcd = o3d.io.read_point_cloud(pointcloud_path)
+
+
+# get everything needed
 points = np.asarray(pcd.points)
 colors = np.asarray(pcd.colors)
+normals = np.asarray(pcd.normals)
+
 x = torch.tensor(np.hstack((points, colors)), dtype=torch.float32)  # [N,6], x includes x and c
 x = x.to(device)
+
+assert np.allclose(np.asarray(pcd.points), x[:, :3].cpu().numpy(), atol=1e-5), "!!!!Mismatch between x and normals!!!!"
 
 # generate point with noises (Sampling)
 epsilon = torch.randn_like(x[:, :3]) * sigma # noise
@@ -77,11 +84,12 @@ model.train()
 pbar = tqdm(range(epochs), desc="Training", ncols=75)
 
 with open(log_path, "w") as f:
-    f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_edge\n")
+    # f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_edge,loss_normal\n")
+    f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_normal\n")
 
 for epoch in pbar:
     optimizer.zero_grad()
-    loss_sdf, loss_zero, loss_eikonal, loss_edge = compute_loss(model, x, x_noisy_full, epsilon)
+    loss_sdf, loss_zero, loss_eikonal, loss_normal = compute_loss(model, x, x_noisy_full, epsilon, normals)
 
     # -------------------weight setting--------------------
     # loss_total = 5 * loss_sdf + 0.5 * loss_zero + 0.05 * loss_eikonal
@@ -90,7 +98,8 @@ for epoch in pbar:
     loss_total = 4.2 * loss_sdf \
             + 0.5 * loss_zero \
             + w_eik * loss_eikonal \
-            + 0.1 * loss_edge
+            + 0.1 * loss_normal
+            # + 0.1 * loss_edge \
     
     loss_total.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) # clip norm
@@ -105,7 +114,8 @@ for epoch in pbar:
 
     # log each component
     with open(log_path, "a") as f:
-        f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f},{loss_edge.item():.6f}\n")
+        # f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f},{loss_edge.item():.6f},{loss_normal.item():.6f}\n")
+        f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f},{loss_normal.item():.6f}\n")
 
 torch.save(model.state_dict(), ckpt_path)
 print("Training finished.")
