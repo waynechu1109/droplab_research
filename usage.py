@@ -14,19 +14,22 @@ import trimesh
 VIS = False
 
 # images_list = [
-#     'dtu_scan24/images/000000.png', 
-#     'dtu_scan24/images/000001.png'
-#     'dtu_scan24/images/000002.png'
+#     'dust3r/dtu_scan24/images/000000.png', 
+#     'dust3r/dtu_scan24/images/000001.png'
+#     'dust3r/dtu_scan24/images/000002.png'
 # ]
 
-# images_list = ['dust3r/croco/assets/Chateau1.png', 'dust3r/croco/assets/Chateau2.png']
+# images_list = ['dust3r/croco/assets/Chateau2.png', 'dust3r/croco/assets/Chateau2.png']
 
 images_list = [
     # f'dust3r/data/co3d_subset/apple/110_13051_23361/images/frame{num:06d}.jpg'
-    # for num in range(1,202,30)
+    # for num in range(1,202,20)
 
     # f'dust3r/data/co3d_subset/car/621_101777_202473/images/frame{num:06d}.jpg'
     # for num in range(1,202,30)
+
+    f'data/dtu_scan24/images/{num:06d}.png'
+    for num in range(1,48,5)
 
     # 'data/church_1.jpg',
     # 'data/church_2.jpg'
@@ -34,8 +37,8 @@ images_list = [
     # 'data/arc_1.jpg',
     # 'data/arc_2.jpg'
 
-    'data/shoes.jpg',
-    'data/shoes.jpg'
+    # 'data/shoes.jpg',
+    # 'data/shoes.jpg'
 ]
 
 def save_ply(filename, points):
@@ -68,7 +71,7 @@ if __name__ == '__main__':
     batch_size = 1
     schedule = 'cosine'
     lr = 0.01
-    niter = 300
+    niter = 1000
 
     # load the model
     model_name = "dust3r/checkpoints/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth"
@@ -185,6 +188,9 @@ if __name__ == '__main__':
     # 再估算法向量（重要！）
     pcd_down.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamKNN(knn=30))
     pcd_down.orient_normals_consistent_tangent_plane(k=30)
+
+    # 離群點移除
+    pcd_down, ind = pcd_down.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
 
     # 儲存帶顏色與法向量的點雲
     o3d.io.write_point_cloud("data/output_pointcloud_.ply", pcd_down)

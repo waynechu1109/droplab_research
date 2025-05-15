@@ -1,6 +1,21 @@
 import torch
 import torch.nn.functional as F
 
+def compute_color_consistency_loss(x, f_x, alpha=10.0, sample_size=1024):
+    N = x.shape[0]
+    idx = torch.randperm(N)[:sample_size]
+    x_sub = x[idx]  # [M,6]
+    f_sub = f_x[idx]  # [M]
+    rgb = x_sub[:, 3:]  # [M,3]
+
+    diff = rgb.unsqueeze(1) - rgb.unsqueeze(0)  # [M,M,3]
+    color_dist2 = (diff ** 2).sum(-1)  # [M,M]
+    w = torch.exp(-alpha * color_dist2)
+
+    sdf_diff2 = (f_sub.unsqueeze(1) - f_sub.unsqueeze(0)) ** 2  # [M,M]
+    loss = (w * sdf_diff2).mean()
+    return loss
+
 def compute_normal_loss(model, x, normals, batch_size=8192):
     N = x.shape[0]
     total_loss = 0.0
@@ -121,7 +136,7 @@ def compute_loss(model, x, x_noisy_full, epsilon, normals):
     grad_norm = torch.norm(grads, dim=-1)
     # loss_eikonal = ((grad_norm - 1) ** 2).mean()
 
-    # narrow band mask: 只在靠近表面的位置計算 loss
+    # narrow band mask: 只在靠近表面的位置計算 eikonal loss
     sdf_abs = torch.abs(f_pred.detach().squeeze(-1))  # detach 避免回傳梯度
     mask = sdf_abs < 0.05  # threshold 可調整：0.05～0.2 之間都可嘗試
     if mask.any():
@@ -130,10 +145,14 @@ def compute_loss(model, x, x_noisy_full, epsilon, normals):
         loss_eikonal = torch.tensor(0.0, device=f_pred.device)
 
     # Part 4: Edge loss
-    # loss_edge = compute_edge_loss(x, f_x, k=8, alpha=10.0)
+    loss_edge = compute_edge_loss(x, f_x, k=8, alpha=10.0)
 
     # Part 5: Normal loss
     normals = torch.tensor(normals, dtype=torch.float32, device=x.device)
     loss_normal = compute_normal_loss(model, x, normals, batch_size=10000)
+
+    # Part 6: Color Consistency loss
+    consistency_loss = compute_color_consistency_loss(x, f_x, alpha=10.0, sample_size=1024)
     
-    return loss_sdf, loss_zero, loss_eikonal, loss_normal
+    # return loss_sdf, loss_zero, loss_eikonal, loss_edge, loss_normal
+    return loss_sdf, loss_zero, loss_eikonal, loss_normal, consistency_loss

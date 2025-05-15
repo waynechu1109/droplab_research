@@ -28,7 +28,7 @@ desc = args.desc
 log_path = args.log_path
 ckpt_path = args.ckpt_path
 
-pointcloud_path = "data/output_pointcloud_shoes_normal.ply"
+pointcloud_path = "data/output_pointcloud_dtu_normal.ply"
 
 # ---------- Device ----------
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -81,25 +81,33 @@ scheduler = CosineAnnealingLR(
 
 # training example
 model.train()
-pbar = tqdm(range(epochs), desc="Training", ncols=75)
+pbar = tqdm(range(epochs), desc="Training", ncols=100)
 
 with open(log_path, "w") as f:
+    f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_normal,loss_consistency\n")
     # f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_edge,loss_normal\n")
-    f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_normal\n")
+    # f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_normal\n")
 
 for epoch in pbar:
     optimizer.zero_grad()
-    loss_sdf, loss_zero, loss_eikonal, loss_normal = compute_loss(model, x, x_noisy_full, epsilon, normals)
+    # loss_sdf, loss_zero, loss_eikonal, loss_edge, loss_normal = compute_loss(model, x, x_noisy_full, epsilon, normals)
+    loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_consistency = compute_loss(model, x, x_noisy_full, epsilon, normals)
 
     # -------------------weight setting--------------------
     # loss_total = 5 * loss_sdf + 0.5 * loss_zero + 0.05 * loss_eikonal
     eik_init, eik_final, ramp = 0.01, 0.05, 750
     w_eik = eik_init + (eik_final - eik_init) * min(epoch/ramp, 1.0)
+    # loss_total = 4.2 * loss_sdf \
+    #         + 0.5 * loss_zero \
+    #         + w_eik * loss_eikonal \
+    #         + 0.1 * loss_edge \
+    #         + 0.05 * loss_normal
+
     loss_total = 4.2 * loss_sdf \
             + 0.5 * loss_zero \
             + w_eik * loss_eikonal \
-            + 0.1 * loss_normal
-            # + 0.1 * loss_edge \
+            + 0.05 * loss_normal \
+            + 0.1 * loss_consistency
     
     loss_total.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) # clip norm
@@ -115,7 +123,7 @@ for epoch in pbar:
     # log each component
     with open(log_path, "a") as f:
         # f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f},{loss_edge.item():.6f},{loss_normal.item():.6f}\n")
-        f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f},{loss_normal.item():.6f}\n")
+        f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f},{loss_normal.item():.6f},{loss_consistency.item():.6f}\n")
 
 torch.save(model.state_dict(), ckpt_path)
 print("Training finished.")

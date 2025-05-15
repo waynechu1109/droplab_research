@@ -8,7 +8,7 @@ import trimesh
 from model import SDFNet
 
 # read pointcloud for the range to construct the mesh
-pcd = o3d.io.read_point_cloud("data/output_pointcloud_shoes_normal.ply")
+pcd = o3d.io.read_point_cloud("data/output_pointcloud_dtu_normal.ply")
 
 parser = argparse.ArgumentParser(description="SDFNet inference script.")
 parser.add_argument('--res', type=int, default=256, help="Voxel grid resolution.")
@@ -73,6 +73,21 @@ print("SDF predicted.")
 # --- reshape 成 3D grid ---
 sdf_grid = sdf_pred.reshape(res, res, res)
 print("SDF range:", np.min(sdf_grid), np.max(sdf_grid))
+
+# # --- 只保留最大連通區塊（前處理） ---
+# binary_mask = np.abs(sdf_grid) < 0.0008
+# labels = measure.label(binary_mask, connectivity=1)
+# props = measure.regionprops(labels)
+
+# if len(props) == 0:
+#     raise ValueError("找不到任何零交界區域，請檢查 SDF 預測範圍")
+
+# # 找出最大區塊
+# largest_region = max(props, key=lambda r: r.area)
+# mask = labels == largest_region.label
+
+# # 把非最大區塊的值設成遠離零交界（避免被提取）
+# sdf_grid[~mask] = 0.5  # >0 或 <0 均可，只要遠離 level=0 即可
 
 # --- 判斷是否有表面可用 marching cubes ---
 if np.min(sdf_grid) >= 0 or np.max(sdf_grid) <= 0:

@@ -23,6 +23,7 @@ plt.plot(df["epoch"], df["loss_zero"], label="Zero Constraint")
 plt.plot(df["epoch"], df["loss_eikonal"], label="Eikonal")
 # plt.plot(df["epoch"], df["loss_edge"], label="Edge")
 plt.plot(df["epoch"], df["loss_normal"], label="Normal")
+plt.plot(df["epoch"], df["loss_consistency"], label="Consistency")
 
 plt.xlabel("Epoch")
 plt.ylabel("Loss Value")
