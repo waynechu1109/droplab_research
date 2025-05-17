@@ -1,6 +1,21 @@
 import torch
 import torch.nn.functional as F
 
+# def compute_color_smoothness_loss(x, f_x_grad, radius=0.05):
+#     # x: [N,6] = [xyz, rgb], f_x_grad: [N,3]
+#     pos = x[:, :3]
+#     rgb = x[:, 3:]
+    
+#     # 隨機 sample 周圍點差值（或預先建立鄰接結構）
+#     # 這裡以 torch.diff 模擬 RGB 局部 gradient
+#     rgb_var = torch.var(rgb, dim=1, unbiased=False)  # [N]
+    
+#     gamma = rgb_var / (rgb_var.max() + 1e-6)  # normalize 到 [0, 1]
+    
+#     grad_norm2 = f_x_grad.norm(dim=1) ** 2  # [N]
+    
+#     return (gamma * grad_norm2).mean()
+
 def compute_color_consistency_loss(x, f_x, alpha=10.0, sample_size=1024):
     N = x.shape[0]
     idx = torch.randperm(N)[:sample_size]
@@ -14,7 +29,7 @@ def compute_color_consistency_loss(x, f_x, alpha=10.0, sample_size=1024):
 
     sdf_diff2 = (f_sub.unsqueeze(1) - f_sub.unsqueeze(0)) ** 2  # [M,M]
     loss = (w * sdf_diff2).mean()
-    return loss
+    return 100 * loss
 
 def compute_normal_loss(model, x, normals, batch_size=8192):
     N = x.shape[0]
@@ -145,14 +160,17 @@ def compute_loss(model, x, x_noisy_full, epsilon, normals):
         loss_eikonal = torch.tensor(0.0, device=f_pred.device)
 
     # Part 4: Edge loss
-    loss_edge = compute_edge_loss(x, f_x, k=8, alpha=10.0)
+    # loss_edge = compute_edge_loss(x, f_x, k=8, alpha=10.0)
 
     # Part 5: Normal loss
     normals = torch.tensor(normals, dtype=torch.float32, device=x.device)
     loss_normal = compute_normal_loss(model, x, normals, batch_size=10000)
 
     # Part 6: Color Consistency loss
-    consistency_loss = compute_color_consistency_loss(x, f_x, alpha=10.0, sample_size=1024)
+    loss_consistency = compute_color_consistency_loss(x, f_x, alpha=20.0, sample_size=2048)
+
+    # Part 7: Color Smoothness loss
+
     
     # return loss_sdf, loss_zero, loss_eikonal, loss_edge, loss_normal
-    return loss_sdf, loss_zero, loss_eikonal, loss_normal, consistency_loss
+    return loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_consistency

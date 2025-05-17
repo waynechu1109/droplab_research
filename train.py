@@ -14,6 +14,7 @@ parser.add_argument('--epochs', type=int, default=5000, help="Number of training
 parser.add_argument('--lr', type=float, default=0.005, help="Learning rate.")
 parser.add_argument('--sigma', type=float, default=0.01, help="Noise sigma.")
 parser.add_argument('--desc', type=str, required=True, help="Experiment description.")
+parser.add_argument('--para', type=float, required=True, help="Parameter want to control.")
 parser.add_argument('--log_path', type=str, required=True, help="Log file path.")
 parser.add_argument('--ckpt_path', type=str, required=True, help="Checkpoint save path.")
 args = parser.parse_args()
@@ -23,12 +24,13 @@ epochs = args.epochs
 lr_tune_epochs = 500
 lr = args.lr
 sigma = args.sigma
+para = args.para
 
 desc = args.desc
 log_path = args.log_path
 ckpt_path = args.ckpt_path
 
-pointcloud_path = "data/output_pointcloud_dtu_normal.ply"
+pointcloud_path = "data/output_pointcloud_shoes_normal.ply"
 
 # ---------- Device ----------
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -107,7 +109,7 @@ for epoch in pbar:
             + 0.5 * loss_zero \
             + w_eik * loss_eikonal \
             + 0.05 * loss_normal \
-            + 0.1 * loss_consistency
+            + para * loss_consistency
     
     loss_total.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) # clip norm

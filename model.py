@@ -18,7 +18,8 @@ class SDFNet(nn.Module):
         self.skip = skip_connection_at
 
         # PE for xyz, so input_dim = 3 + 2*pe_freqs*3
-        self.input_dim = 3 + 2 * pe_freqs * 3
+        self.pe_dim = 3 + 2 * pe_freqs * 3
+        self.input_dim = self.pe_dim + 3  # + RGB
 
         layers = []
         for i in range(num_layers):
@@ -50,14 +51,16 @@ class SDFNet(nn.Module):
         """
         # 拆分位置和颜色（后者暂不参与 SDF 计算）
         p = x[:, :3]  # [N,3]
-        # 可以保留 rgb = x[:,3:] 以备用
+        rgb = x[:,3:]
 
         # 对 xyz 做 PE 并通过 MLP
         pe = self.pos_enc(p)  # [N, input_dim]
-        h = pe
+        input_with_color = torch.cat([pe, rgb], dim=-1)  # 加上顏色資訊
+
+        h = input_with_color
         for i in range(self.num_layers):
             if i == self.skip:
-                h = torch.cat([h, pe], dim=-1)
+                h = torch.cat([h, input_with_color], dim=-1)
             lin = self.layers[2*i]
             act = self.layers[2*i + 1]
             h = act(lin(h))

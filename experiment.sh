@@ -4,7 +4,7 @@
 set -euo pipefail
 
 if [ $# -lt 1 ]; then
-  echo "Usage: $0 EXP_NAME [EPOCHS] [LR] [SIGMA]"
+  echo "Usage: $0 EXP_NAME [EPOCHS] [LR] [SIGMA] [PARAMETER]"
   exit 1
 fi
 
@@ -13,6 +13,7 @@ EXP_NAME=$1
 EPOCHS=${2:-5000}
 LR=${3:-0.005}
 SIGMA=${4:-0.01}
+PARAMETER=$5
 
 # dir. setting
 LOG_DIR="log"
@@ -27,6 +28,7 @@ python3 train.py \
   --lr "$LR" \
   --sigma "$SIGMA" \
   --desc "$EXP_NAME" \
+  --para "$PARAMETER" \
   --log_path "$LOG_DIR/sdf_model_${EPOCHS}_${EXP_NAME}.txt" \
   --ckpt_path "$CKPT_DIR/sdf_model_${EPOCHS}_${EXP_NAME}.pt"
 echo "[1/3] Fininsh Training"
@@ -44,4 +46,4 @@ echo "[2/3] Fininsh Inferencing"
 
 
 
-# ./experiment.sh NeuS_pe6_beta100_4.2_.5_.01to.05_[]_.05_.1_adamw_cosAnn_narrow_band_msk0.05 2500 0.005 0.01
+# ./experiment.sh NeuS_pe6_beta100_4.2_.5_.01to.05_[]_.05_1_adamw_cosAnn_narrow_band_msk0.05 2500 0.005 0.01
