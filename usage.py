@@ -31,14 +31,20 @@ images_list = [
     # f'data/dtu_scan24/images/{num:06d}.png'
     # for num in range(1,48,5)
 
-    # 'data/church_1.jpg',
-    # 'data/church_1.jpg'
+    # 'data/church.jpg',
+    # 'data/church.jpg'
 
-    # 'data/arc_1.jpg',
-    # 'data/arc_2.jpg'
+    # 'data/arc.jpg',
+    # 'data/arc.jpg'
 
-    'data/shoes.jpg',
-    'data/shoes.jpg'
+    # 'data/mtPres.jpg',
+    # 'data/mtPres.jpg'
+
+    'data/rock.jpg',
+    'data/rock.jpg'
+
+    # 'data/shoes.jpg',
+    # 'data/shoes.jpg'
 
     # 'data/101_4.jpg',
     # 'data/101_5.jpg',

@@ -7,21 +7,26 @@ import open3d as o3d
 import trimesh
 from model import SDFNet
 
-# read pointcloud for the range to construct the mesh
-pcd = o3d.io.read_point_cloud("data/output_pointcloud_shoes_normal.ply")
-
 parser = argparse.ArgumentParser(description="SDFNet inference script.")
 parser.add_argument('--res', type=int, default=256, help="Voxel grid resolution.")
 parser.add_argument('--ckpt_path', type=str, required=True, help="Path to model checkpoint.")
 parser.add_argument('--output_mesh', type=str, required=True, help="Output mesh file path.")
+parser.add_argument('--para', type=float, required=True, help="Parameter want to control.")
+parser.add_argument('--file_name', type=str, required=True, help="Pointcloud file name.")
 args = parser.parse_args()
 
 res = args.res  # voxel resolution
 ckpt_path = args.ckpt_path
 output_mesh = args.output_mesh
+para = args.para
+file_name = args.file_name
+
+# read pointcloud for the range to construct the mesh
+pcd = o3d.io.read_point_cloud(f"data/output_pointcloud_{file_name}_normal.ply")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = SDFNet().to(device)
+# model = SDFNet().to(device)
+model = SDFNet(pe_freqs=int(para)).to(device)
 
 # load model
 try:

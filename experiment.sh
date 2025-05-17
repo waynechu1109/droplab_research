@@ -4,7 +4,7 @@
 set -euo pipefail
 
 if [ $# -lt 1 ]; then
-  echo "Usage: $0 EXP_NAME [EPOCHS] [LR] [SIGMA] [PARAMETER]"
+  echo "Usage: $0 EXP_NAME [EPOCHS] [LR] [SIGMA] [PARAMETER] [FILENAME]"
   exit 1
 fi
 
@@ -14,6 +14,7 @@ EPOCHS=${2:-5000}
 LR=${3:-0.005}
 SIGMA=${4:-0.01}
 PARAMETER=$5
+FILEMANE=$6
 
 # dir. setting
 LOG_DIR="log"
@@ -29,15 +30,18 @@ python3 train.py \
   --sigma "$SIGMA" \
   --desc "$EXP_NAME" \
   --para "$PARAMETER" \
-  --log_path "$LOG_DIR/sdf_model_${EPOCHS}_${EXP_NAME}.txt" \
-  --ckpt_path "$CKPT_DIR/sdf_model_${EPOCHS}_${EXP_NAME}.pt"
+  --log_path "$LOG_DIR/sdf_model_${EPOCHS}_${EXP_NAME}_${FILEMANE}.txt" \
+  --ckpt_path "$CKPT_DIR/sdf_model_${EPOCHS}_${EXP_NAME}_${FILEMANE}.pt" \
+  --file_name "$FILEMANE"
 echo "[1/3] Fininsh Training"
 
 # 2) inference
 python3 inference.py \
   --res 300 \
-  --ckpt_path "$CKPT_DIR/sdf_model_${EPOCHS}_${EXP_NAME}.pt" \
-  --output_mesh "$OUT_DIR/sdf_model_${EPOCHS}_${EXP_NAME}.ply"
+  --ckpt_path "$CKPT_DIR/sdf_model_${EPOCHS}_${EXP_NAME}_${FILEMANE}.pt" \
+  --output_mesh "$OUT_DIR/sdf_model_${EPOCHS}_${EXP_NAME}_${FILEMANE}.ply" \
+  --para "$PARAMETER" \
+  --file_name "$FILEMANE"
 echo "[2/3] Fininsh Inferencing"
 
 # 3) plotting loss courve
