@@ -167,10 +167,10 @@ def compute_loss(model, x, x_noisy_full, epsilon, normals):
     loss_normal = compute_normal_loss(model, x, normals, batch_size=10000)
 
     # Part 6: Color Consistency loss
-    loss_consistency = compute_color_consistency_loss(x, f_x, alpha=20.0, sample_size=2048)
+    # loss_consistency = compute_color_consistency_loss(x, f_x, alpha=20.0, sample_size=2048)
 
     # Part 7: Color Smoothness loss
-
     
     # return loss_sdf, loss_zero, loss_eikonal, loss_edge, loss_normal
-    return loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_consistency
+    return loss_sdf, loss_zero, loss_eikonal, loss_normal
+    # return loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_consistency

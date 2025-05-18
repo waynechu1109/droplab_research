@@ -88,14 +88,16 @@ model.train()
 pbar = tqdm(range(epochs), desc="Training", ncols=100)
 
 with open(log_path, "w") as f:
-    f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_normal,loss_consistency\n")
     # f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_edge,loss_normal\n")
     # f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_normal\n")
+    f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_normal\n")
+    # f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_normal,loss_consistency\n")
 
 for epoch in pbar:
     optimizer.zero_grad()
     # loss_sdf, loss_zero, loss_eikonal, loss_edge, loss_normal = compute_loss(model, x, x_noisy_full, epsilon, normals)
-    loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_consistency = compute_loss(model, x, x_noisy_full, epsilon, normals)
+    loss_sdf, loss_zero, loss_eikonal, loss_normal = compute_loss(model, x, x_noisy_full, epsilon, normals)
+    # loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_consistency = compute_loss(model, x, x_noisy_full, epsilon, normals)
 
     # -------------------weight setting--------------------
     # loss_total = 5 * loss_sdf + 0.5 * loss_zero + 0.05 * loss_eikonal
@@ -110,8 +112,13 @@ for epoch in pbar:
     loss_total = 4.2 * loss_sdf \
             + 0.5 * loss_zero \
             + w_eik * loss_eikonal \
-            + 0.05 * loss_normal \
-            + 1 * loss_consistency
+            + 0.05 * loss_normal 
+
+    # loss_total = 4.2 * loss_sdf \
+    #         + 0.5 * loss_zero \
+    #         + w_eik * loss_eikonal \
+    #         + 0.05 * loss_normal \
+    #         + 1 * loss_consistency
     
     loss_total.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) # clip norm
@@ -127,7 +134,8 @@ for epoch in pbar:
     # log each component
     with open(log_path, "a") as f:
         # f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f},{loss_edge.item():.6f},{loss_normal.item():.6f}\n")
-        f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f},{loss_normal.item():.6f},{loss_consistency.item():.6f}\n")
+        f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f},{loss_normal.item():.6f}\n")
+        # f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f},{loss_normal.item():.6f},{loss_consistency.item():.6f}\n")
 
 torch.save(model.state_dict(), ckpt_path)
 print("Training finished.")

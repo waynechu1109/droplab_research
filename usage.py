@@ -40,8 +40,11 @@ images_list = [
     # 'data/mtPres.jpg',
     # 'data/mtPres.jpg'
 
-    'data/rock.jpg',
-    'data/rock.jpg'
+    # 'data/rock.jpg',
+    # 'data/rock.jpg'
+
+    'data/gizah.jpg',
+    'data/gizah.jpg'
 
     # 'data/shoes.jpg',
     # 'data/shoes.jpg'
