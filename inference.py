@@ -27,6 +27,7 @@ pcd = o3d.io.read_point_cloud(f"data/output_pointcloud_{file_name}_normal.ply")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # model = SDFNet().to(device)
 model = SDFNet(pe_freqs=int(para)).to(device)
+model.pe_mask = torch.ones(int(para), dtype=torch.bool).to(device)  # 全開
 
 # load model
 try:

@@ -32,6 +32,11 @@ desc = args.desc
 log_path = args.log_path
 ckpt_path = args.ckpt_path
 
+# PE setting
+pe_max = int(para)          # max freq index
+pe_min = 0                  # start from 0
+pe_ramp = 800              # total epochs to fully activate all
+
 pointcloud_path = f"data/output_pointcloud_{file_name}_normal.ply"
 
 # ---------- Device ----------
@@ -90,14 +95,20 @@ pbar = tqdm(range(epochs), desc="Training", ncols=100)
 with open(log_path, "w") as f:
     # f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_edge,loss_normal\n")
     # f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_normal\n")
-    f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_normal\n")
-    # f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_normal,loss_consistency\n")
+    # f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_normal\n")
+    f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_normal,loss_consistency\n")
 
 for epoch in pbar:
+    # === Progressive PE Mask Update ===
+    active_pe = pe_min + int((pe_max - pe_min) * min(epoch / pe_ramp, 1.0))
+    pe_mask = torch.zeros(pe_max, dtype=torch.bool)
+    pe_mask[:active_pe] = True
+    model.pe_mask = pe_mask.to(device)
+
     optimizer.zero_grad()
     # loss_sdf, loss_zero, loss_eikonal, loss_edge, loss_normal = compute_loss(model, x, x_noisy_full, epsilon, normals)
-    loss_sdf, loss_zero, loss_eikonal, loss_normal = compute_loss(model, x, x_noisy_full, epsilon, normals)
-    # loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_consistency = compute_loss(model, x, x_noisy_full, epsilon, normals)
+    # loss_sdf, loss_zero, loss_eikonal, loss_normal = compute_loss(model, x, x_noisy_full, epsilon, normals)
+    loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_consistency = compute_loss(model, x, x_noisy_full, epsilon, normals)
 
     # -------------------weight setting--------------------
     # loss_total = 5 * loss_sdf + 0.5 * loss_zero + 0.05 * loss_eikonal
@@ -109,16 +120,16 @@ for epoch in pbar:
     #         + 0.1 * loss_edge \
     #         + 0.05 * loss_normal
 
-    loss_total = 4.2 * loss_sdf \
-            + 0.5 * loss_zero \
-            + w_eik * loss_eikonal \
-            + 0.05 * loss_normal 
-
     # loss_total = 4.2 * loss_sdf \
     #         + 0.5 * loss_zero \
     #         + w_eik * loss_eikonal \
-    #         + 0.05 * loss_normal \
-    #         + 1 * loss_consistency
+    #         + 0.05 * loss_normal 
+
+    loss_total = 4.2 * loss_sdf \
+            + 0.5 * loss_zero \
+            + w_eik * loss_eikonal \
+            + 0.05 * loss_normal \
+            + 1 * loss_consistency
     
     loss_total.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) # clip norm
@@ -134,8 +145,8 @@ for epoch in pbar:
     # log each component
     with open(log_path, "a") as f:
         # f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f},{loss_edge.item():.6f},{loss_normal.item():.6f}\n")
-        f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f},{loss_normal.item():.6f}\n")
-        # f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f},{loss_normal.item():.6f},{loss_consistency.item():.6f}\n")
+        # f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f},{loss_normal.item():.6f}\n")
+        f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f},{loss_normal.item():.6f},{loss_consistency.item():.6f}\n")
 
 torch.save(model.state_dict(), ckpt_path)
 print("Training finished.")

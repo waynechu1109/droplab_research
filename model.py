@@ -20,6 +20,7 @@ class SDFNet(nn.Module):
         # PE for xyz, so input_dim = 3 + 2*pe_freqs*3
         self.pe_dim = 3 + 2 * pe_freqs * 3
         self.input_dim = self.pe_dim + 3  # + RGB
+        self.pe_mask = torch.ones(self.pe_freqs, dtype=torch.bool)  # default: all enabled
 
         layers = []
         for i in range(num_layers):
@@ -34,13 +35,26 @@ class SDFNet(nn.Module):
         self.sdf_out     = nn.Linear(hidden_dim, 1)
         self.feature_out = nn.Linear(hidden_dim, hidden_dim)  # 保留以备后续使用
 
+    # position encoding
     def pos_enc(self, x: torch.Tensor) -> torch.Tensor:
         enc = [x]
         for i in range(self.pe_freqs):
-            freq = (2.0 ** i) * math.pi
-            enc.append(torch.sin(freq * x))
-            enc.append(torch.cos(freq * x))
+            if self.pe_mask[i]:
+                freq = (2.0 ** i) * math.pi
+                enc.append(torch.sin(freq * x))
+                enc.append(torch.cos(freq * x))
+            else:
+                enc.append(torch.zeros_like(x))
+                enc.append(torch.zeros_like(x))
         return torch.cat(enc, dim=-1)
+
+    # def pos_enc(self, x: torch.Tensor) -> torch.Tensor:
+    #     enc = [x]
+    #     for i in range(self.pe_freqs):
+    #         freq = (2.0 ** i) * math.pi
+    #         enc.append(torch.sin(freq * x))
+    #         enc.append(torch.cos(freq * x))
+    #     return torch.cat(enc, dim=-1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
