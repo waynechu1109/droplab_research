@@ -19,4 +19,4 @@ export OMP_NUM_THREADS=1
 # done
 
 
-./scripts/experiment.sh two_stage_test_2 0.005 shoes training_schedule
+./scripts/experiment.sh two_stage_test_4 0.005 dtu training_schedule

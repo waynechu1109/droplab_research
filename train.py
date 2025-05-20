@@ -20,6 +20,7 @@ from loss import compute_loss
 from torch.optim.lr_scheduler import LambdaLR
 from torch.optim.lr_scheduler import MultiStepLR
 from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import OneCycleLR
 
 parser = argparse.ArgumentParser(description="SDFNet training script.")
 # parser.add_argument('--epochs', type=int, default=5000, help="Number of training epochs.")
@@ -101,10 +102,19 @@ optimizer = torch.optim.AdamW(
 #     milestones=[epochs*0.2, epochs*0.4, epochs*0.6, epochs*0.8],
 #     gamma=0.5
 # )
-scheduler = CosineAnnealingLR(
+# scheduler = CosineAnnealingLR(
+#     optimizer,
+#     T_max=total_epochs,      
+#     eta_min=1e-5             # lowest lr
+# )
+scheduler = OneCycleLR(
     optimizer,
-    T_max=total_epochs,      
-    eta_min=1e-5             # lowest lr
+    max_lr=lr,
+    epochs=total_epochs,
+    steps_per_epoch=1,
+    pct_start=0.1,
+    anneal_strategy="cos",
+    final_div_factor=10
 )
 
 # training
@@ -115,7 +125,8 @@ with open(log_path, "w") as f:
     # f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_edge,loss_normal\n")
     # f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_normal\n")
     # f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_normal\n")
-    f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_normal,loss_consistency\n")
+    # f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_normal,loss_consistency\n")
+    f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_normal,loss_consistency,learning_rate\n")
 
 for epoch in pbar:
     # Set the training configuration
@@ -149,7 +160,9 @@ for epoch in pbar:
     epsilon = epsilon.to(device)
 
     # === Progressive PE Mask Update ===
-    active_pe = pe_min + int((pe_max - pe_min) * min(epoch_in_stage / pe_ramp, 1.0))
+    alpha = 1 / (1 + np.exp(-(epoch_in_stage - pe_ramp/2) / (pe_ramp/10)))
+    active_pe = pe_min + int((pe_max - pe_min) * alpha)
+    # active_pe = pe_min + int((pe_max - pe_min) * min(epoch_in_stage / pe_ramp, 1.0))
     pe_mask = torch.zeros(model.pe_freqs, dtype=torch.bool)
     pe_mask[:active_pe] = True
     model.pe_mask = pe_mask.to(device)
@@ -191,11 +204,13 @@ for epoch in pbar:
         lr=optimizer.param_groups[0]['lr']
     )
 
+    current_lr = optimizer.param_groups[0]['lr']
     # log each component
     with open(log_path, "a") as f:
         # f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f},{loss_edge.item():.6f},{loss_normal.item():.6f}\n")
         # f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f},{loss_normal.item():.6f}\n")
-        f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f},{loss_normal.item():.6f},{loss_consistency.item():.6f}\n")
+        # f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f},{loss_normal.item():.6f},{loss_consistency.item():.6f}\n")
+        f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f},{loss_normal.item():.6f},{loss_consistency.item():.6f},{current_lr:.8f}\n")
 
 # torch.save(model.state_dict(), ckpt_path)
 torch.save({
