@@ -1,10 +1,9 @@
-data/
 checkpoints/
 dust3r/
-output/
-ckpt/
-log/
 
+*.txt
+*.pt
+*.ply
 *.jpg
 *.png
 *.code-workspace

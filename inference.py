@@ -11,32 +11,50 @@ parser = argparse.ArgumentParser(description="SDFNet inference script.")
 parser.add_argument('--res', type=int, default=256, help="Voxel grid resolution.")
 parser.add_argument('--ckpt_path', type=str, required=True, help="Path to model checkpoint.")
 parser.add_argument('--output_mesh', type=str, required=True, help="Output mesh file path.")
-parser.add_argument('--para', type=float, required=True, help="Parameter want to control.")
+# parser.add_argument('--para', type=float, required=True, help="Parameter want to control.")
 parser.add_argument('--file_name', type=str, required=True, help="Pointcloud file name.")
 args = parser.parse_args()
 
 res = args.res  # voxel resolution
 ckpt_path = args.ckpt_path
 output_mesh = args.output_mesh
-para = args.para
+# para = args.para
 file_name = args.file_name
 
 # read pointcloud for the range to construct the mesh
 pcd = o3d.io.read_point_cloud(f"data/output_pointcloud_{file_name}_normal.ply")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-# model = SDFNet().to(device)
-model = SDFNet(pe_freqs=int(para)).to(device)
-model.pe_mask = torch.ones(int(para), dtype=torch.bool).to(device)  # 全開
 
-# load model
+# load model checkpoint
 try:
-    # model.load_state_dict(torch.load("ckpt/sdf_model.pt"))
-    # torch.load("ckpt/sdf_model.pt", weights_only=True)
-    state_dict = torch.load(ckpt_path, map_location=device, weights_only=True)
-    model.load_state_dict(state_dict)
+    checkpoint = torch.load(ckpt_path, map_location=device)
+
+    # 如果是新格式（包含 pe_freqs）
+    if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
+        pe_freqs = checkpoint.get("pe_freqs")
+        model = SDFNet(pe_freqs=pe_freqs).to(device)
+        model.pe_mask = torch.ones(pe_freqs, dtype=torch.bool).to(device)
+        model.load_state_dict(checkpoint["model_state_dict"])
+    else:
+        print("Fail to load model: this is the wrong format")
+        exit(1)
+
+    print(f"Model loaded successfully with pe_freqs = {pe_freqs}")
+
 except Exception as e:
     print("Fail to load model:", e)
+    exit(1)
+
+# model = SDFNet(pe_freqs=int(para)).to(device)
+# model.pe_mask = torch.ones(int(para), dtype=torch.bool).to(device)  # 全開
+
+# # load model
+# try:
+#     state_dict = torch.load(ckpt_path, map_location=device, weights_only=True)
+#     model.load_state_dict(state_dict)
+# except Exception as e:
+#     print("Fail to load model:", e)
 
 # set the model to eval() mode for inference
 model.eval()

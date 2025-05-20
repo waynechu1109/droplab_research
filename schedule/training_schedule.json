@@ -1,0 +1,29 @@
+{
+    "total_epochs": 2500,
+    "coarse": {
+        "epochs": 500,
+        "sigma": 0.003,
+        "pe_freqs": 3,
+        "pe_ramp": 200,
+        "loss_weights": {
+            "loss_sdf": 5.0,
+            "loss_zero": 1.0,
+            "loss_eikonal": 0.1,
+            "loss_normal": 0.1,
+            "loss_consistency": 0.0
+        }
+    },
+    "fine": {
+        "epochs": 2000,
+        "sigma": 0.01,
+        "pe_freqs": 8,
+        "pe_ramp": 800,
+        "loss_weights": {
+            "loss_sdf": 4.2,
+            "loss_zero": 0.5,
+            "loss_eikonal": 0.05,
+            "loss_normal": 0.05,
+            "loss_consistency": 0.1
+        }
+    }
+}
