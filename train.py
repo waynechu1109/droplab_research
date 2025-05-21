@@ -34,10 +34,7 @@ parser.add_argument('--file_name', type=str, required=True, help="Pointcloud fil
 parser.add_argument('--schedule_path', type=str, required=True, help="Training schedule file name.")
 args = parser.parse_args()
 
-
-lr_tune = True
 # epochs = args.epochs
-lr_tune_epochs = 500
 lr = args.lr
 # sigma = args.sigma
 # para = args.para
@@ -136,12 +133,16 @@ for epoch in pbar:
     pe_max = stage_cfg["pe_freqs"]
     pe_ramp = stage_cfg["pe_ramp"]
 
-    # get the weight from schedule
-    weight_sdf         = stage_cfg["loss_weights"]["loss_sdf"]
-    weight_zero        = stage_cfg["loss_weights"]["loss_zero"]
-    weight_eikonal     = stage_cfg["loss_weights"]["loss_eikonal"]
-    weight_normal      = stage_cfg["loss_weights"]["loss_normal"]
-    weight_consistency = stage_cfg["loss_weights"]["loss_consistency"]
+    # get the weight information from schedule
+    weight_sdf           = stage_cfg["loss_weights"]["loss_sdf"]
+    weight_zero          = stage_cfg["loss_weights"]["loss_zero"]
+
+    eik_init             = stage_cfg["loss_weights"]["loss_eikonal"]["loss_eikonal_init"]
+    weight_eikonal_final = stage_cfg["loss_weights"]["loss_eikonal"]["loss_eikonal_final"]
+    eik_ramp             = stage_cfg["loss_weights"]["loss_eikonal"]["loss_eikonal_ramp"]
+    
+    weight_normal        = stage_cfg["loss_weights"]["loss_normal"]
+    weight_consistency   = stage_cfg["loss_weights"]["loss_consistency"]
 
     if stage_cfg is schedule["coarse"]:
         epoch_in_stage = epoch
@@ -160,9 +161,9 @@ for epoch in pbar:
     epsilon = epsilon.to(device)
 
     # === Progressive PE Mask Update ===
-    alpha = 1 / (1 + np.exp(-(epoch_in_stage - pe_ramp/2) / (pe_ramp/10)))
-    active_pe = pe_min + int((pe_max - pe_min) * alpha)
-    # active_pe = pe_min + int((pe_max - pe_min) * min(epoch_in_stage / pe_ramp, 1.0))
+    # alpha = 1 / (1 + np.exp(-(epoch_in_stage - pe_ramp/2) / (pe_ramp/10)))
+    # active_pe = pe_min + int((pe_max - pe_min) * alpha)
+    active_pe = pe_min + int((pe_max - pe_min) * min(epoch_in_stage / pe_ramp, 1.0))
     pe_mask = torch.zeros(model.pe_freqs, dtype=torch.bool)
     pe_mask[:active_pe] = True
     model.pe_mask = pe_mask.to(device)
@@ -187,17 +188,17 @@ for epoch in pbar:
     #         + w_eik * loss_eikonal \
     #         + 0.05 * loss_normal 
 
+    w_eik = eik_init + (weight_eikonal_final - eik_init) * min(epoch / eik_ramp, 1.0)
     loss_total = weight_sdf * loss_sdf \
                 + weight_zero * loss_zero \
-                + weight_eikonal * loss_eikonal \
+                + w_eik * loss_eikonal \
                 + weight_normal * loss_normal \
                 + weight_consistency * loss_consistency
     
     loss_total.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) # clip norm
-    optimizer.step()
-    # if lr_tune:
-    scheduler.step() # step lr
+    optimizer.step() # update model's parameters
+    scheduler.step() # update lr
 
     pbar.set_postfix(
         loss=loss_total.item(),
