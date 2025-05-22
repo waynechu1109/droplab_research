@@ -24,22 +24,22 @@ export OMP_NUM_THREADS=1
 #     done
 # done
 
-# for file in shoes; do
-#     for lr in 0.0025; do
-#         ./scripts/experiment.sh "two_stage_test_8_$lr" "$lr" "$file" training_schedule
-#     done
-# done
-
-lr_list=(0.0025 0.0035 0.0045)
-consistency_list=(0.001 0.005 0.01)
-files=(arc rock shoes dtu church)
-
-for file in "${files[@]}"; do
-  for lr in "${lr_list[@]}"; do
-    for cons in "${consistency_list[@]}"; do
-      tag="exp_${file}_lr${lr}_cons${cons}"
-      sched_path="cons_${cons}"
-      ./scripts/experiment.sh "$tag" "$lr" "$file" "$sched_path"
+for file in arc; do
+    for lr in 0.0025; do
+        ./scripts/experiment.sh "two_stage_test_hash_$lr" "$lr" "$file" schedule
     done
-  done
 done
+
+# lr_list=(0.0025 0.0035 0.0045)
+# consistency_list=(0.001 0.005 0.01)
+# files=(arc rock shoes dtu church)
+
+# for file in "${files[@]}"; do
+#   for lr in "${lr_list[@]}"; do
+#     for cons in "${consistency_list[@]}"; do
+#       tag="exp_${file}_lr${lr}_cons${cons}"
+#       sched_path="cons_${cons}"
+#       ./scripts/experiment.sh "$tag" "$lr" "$file" "$sched_path"
+#     done
+#   done
+# done
