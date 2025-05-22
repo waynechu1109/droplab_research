@@ -3,8 +3,8 @@
     "coarse": {
         "epochs": 1000,
         "sigma": 0.003,
-        "pe_freqs": 2,
-        "pe_ramp": 900,
+        "pe_freqs": 3,
+        "pe_ramp": 500,
         "loss_weights": {
             "loss_sdf": 5.0,
             "loss_zero": 1.0,
@@ -21,7 +21,7 @@
         "epochs": 1500,
         "sigma": 0.005,
         "pe_freqs": 8,
-        "pe_ramp": 800,
+        "pe_ramp": 600,
         "loss_weights": {
             "loss_sdf": 4.2,
             "loss_zero": 0.5,

@@ -23,13 +23,15 @@ fig, (ax1, ax2) = plt.subplots(
     gridspec_kw={"height_ratios": [10, 3]}
 )
 
+alpha = 0.7
+
 # --- 第一張圖：Loss 曲線 ---
 ax1.plot(df["epoch"], df["loss_total"], label="Total Loss", linewidth=2)
-ax1.plot(df["epoch"], df["loss_sdf"], label="SDF Loss")
-ax1.plot(df["epoch"], df["loss_zero"], label="Zero Constraint")
-ax1.plot(df["epoch"], df["loss_eikonal"], label="Eikonal")
-ax1.plot(df["epoch"], df["loss_normal"], label="Normal")
-ax1.plot(df["epoch"], df["loss_consistency"], label="Consistency")
+ax1.plot(df["epoch"], df["loss_sdf"], label="SDF Loss", alpha=alpha)
+ax1.plot(df["epoch"], df["loss_zero"], label="Zero Constraint", alpha=alpha)
+ax1.plot(df["epoch"], df["loss_eikonal"], label="Eikonal", alpha=alpha)
+ax1.plot(df["epoch"], df["loss_normal"], label="Normal", alpha=alpha)
+ax1.plot(df["epoch"], df["loss_consistency"], label="Consistency", alpha=alpha)
 ax1.set_ylabel("Loss Value")
 ax1.set_title("SDF Training Loss Curve")
 ax1.set_yscale("log")

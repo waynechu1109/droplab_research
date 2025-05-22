@@ -99,20 +99,20 @@ optimizer = torch.optim.AdamW(
 #     milestones=[epochs*0.2, epochs*0.4, epochs*0.6, epochs*0.8],
 #     gamma=0.5
 # )
-# scheduler = CosineAnnealingLR(
-#     optimizer,
-#     T_max=total_epochs,      
-#     eta_min=1e-5             # lowest lr
-# )
-scheduler = OneCycleLR(
+scheduler = CosineAnnealingLR(
     optimizer,
-    max_lr=lr,
-    epochs=total_epochs,
-    steps_per_epoch=1,
-    pct_start=0.1,
-    anneal_strategy="cos",
-    final_div_factor=10
+    T_max=total_epochs,      
+    eta_min=1e-5             # lowest lr
 )
+# scheduler = OneCycleLR(
+#     optimizer,
+#     max_lr=lr,
+#     epochs=total_epochs,
+#     steps_per_epoch=1,
+#     pct_start=0.1,
+#     anneal_strategy="cos",
+#     final_div_factor=10
+# )
 
 # training
 model.train()
