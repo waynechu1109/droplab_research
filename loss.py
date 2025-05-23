@@ -16,6 +16,20 @@ import torch.nn.functional as F
     
 #     return (gamma * grad_norm2).mean()
 
+def compute_outside_loss(model, x, box_margin=0.1, num_samples=50000):
+    with torch.no_grad():
+        min_bound = x[:, :3].min(dim=0)[0]
+        max_bound = x[:, :3].max(dim=0)[0]
+        margin = (max_bound - min_bound) * box_margin
+        min_bound -= margin
+        max_bound += margin
+        uniform_xyz = torch.rand((num_samples, 3), device=x.device) * (max_bound - min_bound) + min_bound
+        uniform_rgb = torch.ones_like(uniform_xyz) * 0.5
+        uniform_input = torch.cat([uniform_xyz, uniform_rgb], dim=-1)
+    f_uniform = model(uniform_input)
+    # 強迫這些點的 sdf 遠離 0（不應落在表面附近）
+    return torch.relu(0.05 - f_uniform.abs()).mean()
+
 def compute_color_consistency_loss(x, f_x, alpha=10.0, sample_size=1024):
     N = x.shape[0]
     idx = torch.randperm(N)[:sample_size]
@@ -127,8 +141,11 @@ def compute_loss(model, x, x_noisy_full, epsilon, normals):
     f_x_noisy = model(x_noisy_full)
 
     # Part 1: MSE between predicted SDF at xⁿ and actual |ε|
-    true_dist = epsilon.norm(dim=1)
-    loss_sdf = F.mse_loss(f_x_noisy, true_dist)
+    # true_dist = epsilon.norm(dim=1)
+    # loss_sdf = F.mse_loss(f_x_noisy, true_dist)
+    normals = torch.tensor(normals, dtype=torch.float32, device=x.device)
+    signed_dist = torch.sum(epsilon * normals, dim=1)
+    loss_sdf = F.mse_loss(f_x_noisy, signed_dist)
 
     # Part 2: ||f(x, c)||
     loss_zero = f_x.abs().mean()
@@ -169,8 +186,10 @@ def compute_loss(model, x, x_noisy_full, epsilon, normals):
     # Part 6: Color Consistency loss
     loss_consistency = compute_color_consistency_loss(x, f_x, alpha=20.0, sample_size=2048)
 
-    # Part 7: Color Smoothness loss
+    # Part 7: Outside loss
+    loss_outside = compute_outside_loss(model, x)
     
     # return loss_sdf, loss_zero, loss_eikonal, loss_edge, loss_normal
     # return loss_sdf, loss_zero, loss_eikonal, loss_normal
-    return loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_consistency
+    # return loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_consistency
+    return loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_consistency, loss_outside

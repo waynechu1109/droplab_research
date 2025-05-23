@@ -80,7 +80,8 @@ with open(log_path, "w") as f:
     # f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_normal\n")
     # f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_normal\n")
     # f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_normal,loss_consistency\n")
-    f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_normal,loss_consistency,learning_rate\n")
+    # f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_normal,loss_consistency,learning_rate\n")
+    f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_normal,loss_consistency,loss_outside,learning_rate\n")
 
 for epoch in pbar:
     # Set the training configuration
@@ -102,6 +103,7 @@ for epoch in pbar:
     
     weight_normal        = stage_cfg["loss_weights"]["loss_normal"]
     weight_consistency   = stage_cfg["loss_weights"]["loss_consistency"]
+    weight_outside = 0.1
 
     if stage_cfg is schedule["coarse"]:
         epoch_in_stage = epoch
@@ -130,7 +132,8 @@ for epoch in pbar:
     optimizer.zero_grad()
     # loss_sdf, loss_zero, loss_eikonal, loss_edge, loss_normal = compute_loss(model, x, x_noisy_full, epsilon, normals)
     # loss_sdf, loss_zero, loss_eikonal, loss_normal = compute_loss(model, x, x_noisy_full, epsilon, normals)
-    loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_consistency = compute_loss(model, x, x_noisy_full, epsilon, normals)
+    # loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_consistency = compute_loss(model, x, x_noisy_full, epsilon, normals)
+    loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_consistency, loss_outside = compute_loss(model, x, x_noisy_full, epsilon, normals)
 
     # -------------------weight setting--------------------
     w_eik = eik_init + (weight_eikonal_final - eik_init) * min(epoch / eik_ramp, 1.0)
@@ -138,7 +141,8 @@ for epoch in pbar:
                 + weight_zero * loss_zero \
                 + w_eik * loss_eikonal \
                 + weight_normal * loss_normal \
-                + weight_consistency * loss_consistency
+                + weight_consistency * loss_consistency \
+                + weight_outside * loss_outside
     
     loss_total.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) # clip norm
@@ -156,7 +160,8 @@ for epoch in pbar:
         # f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f},{loss_edge.item():.6f},{loss_normal.item():.6f}\n")
         # f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f},{loss_normal.item():.6f}\n")
         # f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f},{loss_normal.item():.6f},{loss_consistency.item():.6f}\n")
-        f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f},{loss_normal.item():.6f},{loss_consistency.item():.6f},{current_lr:.8f}\n")
+        # f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f},{loss_normal.item():.6f},{loss_consistency.item():.6f},{current_lr:.8f}\n")
+        f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f},{loss_normal.item():.6f},{loss_consistency.item():.6f},{loss_outside.item():.6f},{current_lr:.8f}\n")
 
 # torch.save(model.state_dict(), ckpt_path)
 # torch.save({
