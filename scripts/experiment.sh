@@ -4,7 +4,7 @@
 set -euo pipefail
 
 if [ $# -lt 1 ]; then
-  echo "Usage: $0 EXP_NAME [LR] [FILENAME] [SCHEDULE]"
+  echo "Usage: $0 EXP_NAME [LR] [FILENAME] [SCHEDULE] [PARAMETER]"
   exit 1
 fi
 
@@ -13,9 +13,9 @@ EXP_NAME=$1
 # EPOCHS=${2:-5000}
 LR=${2:-0.005}
 # SIGMA=${4:-0.01}
-# PARAMETER=$3
 FILEMANE=$3
 SCHEDULE=$4
+PARAMETER=$5
 
 # dir. setting
 LOG_DIR="log"
@@ -32,7 +32,8 @@ python3 train.py \
   --log_path "$LOG_DIR/sdf_model_${EXP_NAME}_${FILEMANE}.txt" \
   --ckpt_path "$CKPT_DIR/sdf_model_${EXP_NAME}_${FILEMANE}.pt" \
   --file_name "$FILEMANE" \
-  --schedule_path "$SCHE_DIR/${SCHEDULE}.json"
+  --schedule_path "$SCHE_DIR/${SCHEDULE}.json" \
+  --para "$PARAMETER"
 echo "[1/3] Fininsh Training"
 
 # 2) inference

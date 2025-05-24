@@ -1,8 +1,10 @@
-pip install -r requirements.txt
-cd dust3r
-pip install -r requirements.txt
-cd ..
+tmux new -s train_session
 
-apt update
-apt install -y build-essential cmake git libpython3-dev
-pip install git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch
+# pull docker image from docker hub
+sudo docker pull waynechu1109/droplab_research:a100_latest
+
+# run docker  
+sudo docker run --gpus all -it \
+  -v ~/Wayne/home/waynechu/droplab_research:/root/droplab_research \
+  waynechu1109/droplab_research:a100_latest \
+  /bin/bash

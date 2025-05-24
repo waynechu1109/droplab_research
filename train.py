@@ -26,6 +26,8 @@ parser.add_argument('--log_path', type=str, required=True, help="Log file path."
 parser.add_argument('--ckpt_path', type=str, required=True, help="Checkpoint save path.")
 parser.add_argument('--file_name', type=str, required=True, help="Pointcloud file name.")
 parser.add_argument('--schedule_path', type=str, required=True, help="Training schedule file name.")
+
+parser.add_argument('--para', type=float, required=True, help="Parameters want to control.")
 args = parser.parse_args()
 
 lr = args.lr
@@ -34,6 +36,9 @@ desc = args.desc
 log_path = args.log_path
 ckpt_path = args.ckpt_path
 sche_path = args.schedule_path
+
+weight_outside_coarse = 0.1
+weight_outside_fine = args.para
 
 # Load training schedule
 schedule = load_schedule(sche_path)
@@ -103,7 +108,7 @@ for epoch in pbar:
     
     weight_normal        = stage_cfg["loss_weights"]["loss_normal"]
     weight_consistency   = stage_cfg["loss_weights"]["loss_consistency"]
-    weight_outside = 0.1
+    weight_outside       = weight_outside_coarse
 
     if stage_cfg is schedule["coarse"]:
         epoch_in_stage = epoch
@@ -111,6 +116,7 @@ for epoch in pbar:
     else:
         epoch_in_stage = epoch - schedule["coarse"]["epochs"]
         pe_min = schedule["coarse"]["pe_freqs"]
+        weight_outside = weight_outside_fine
 
     # generate point with noises (Sampling)
     epsilon = torch.randn_like(x[:, :3]) * sigma # noise
