@@ -2,24 +2,24 @@
     "total_epochs": 2500,
     "coarse": {
         "epochs": 1000,
-        "sigma": 0.01,
+        "sigma": 0.003,
         "pe_freqs": 3,
         "pe_ramp": 500,
         "loss_weights": {
             "loss_sdf": 5.0,
-            "loss_zero": 0.1,
+            "loss_zero": 1.0,
             "loss_eikonal": {
                 "loss_eikonal_init": 0.01,
                 "loss_eikonal_final": 0.06,
                 "loss_eikonal_ramp": 300
             },
-            "loss_normal": 0.4,
+            "loss_normal": 0.1,
             "loss_consistency": 0.0
         }
     },
     "fine": {
         "epochs": 1500,
-        "sigma": 0.01,
+        "sigma": 0.005,
         "pe_freqs": 8,
         "pe_ramp": 600,
         "loss_weights": {
@@ -30,7 +30,7 @@
                 "loss_eikonal_final": 0.05,
                 "loss_eikonal_ramp": 500
             },
-            "loss_normal": 0.2,
+            "loss_normal": 0.05,
             "loss_consistency": 0.01
         }
     }
