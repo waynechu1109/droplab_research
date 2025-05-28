@@ -34,8 +34,8 @@ images_list = [
     # 'data/church.jpg',
     # 'data/church.jpg'
 
-    'data/arc.jpg',
-    'data/arc.jpg'
+    # 'data/arc.jpg',
+    # 'data/arc.jpg'
 
     # 'data/mtPres.jpg',
     # 'data/mtPres.jpg'
@@ -46,8 +46,8 @@ images_list = [
     # 'data/gizah.jpg',
     # 'data/gizah.jpg'
 
-    # 'data/shoes.jpg',
-    # 'data/shoes.jpg'
+    'data/shoes.jpg',
+    'data/shoes.jpg'
 
     # 'data/101_4.jpg',
     # 'data/101_5.jpg',

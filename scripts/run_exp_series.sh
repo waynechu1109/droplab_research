@@ -24,10 +24,12 @@ export OMP_NUM_THREADS=1
 #     done
 # done
 
-for file in arc; do
+for file in arc shoes; do
     for lr in 0.0025; do
-        echo -e "\033[34mhash_normalized_test_fo0.1_$lr\033[0m"
-        ./scripts/experiment.sh "hash_normalized_test_fo0.1_$lr" "$lr" "$file" schedule 0.1
+        for sparse in 0.0001 0.0002 0.0003 0.0004 0.0005; do
+            echo -e "\033[34m$file: hash_normalized_test_sparse${sparse}_${lr}\033[0m"
+            ./scripts/experiment.sh "hash_normalized_test_sparse${sparse}_${lr}" "$lr" "$file" schedule $sparse
+        done
     done
 done
 

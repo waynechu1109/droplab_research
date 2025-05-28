@@ -16,19 +16,27 @@ import torch.nn.functional as F
     
 #     return (gamma * grad_norm2).mean()
 
-def compute_outside_loss(model, x, box_margin=0.1, num_samples=50000):
+# refer to SparseNeuS
+def compute_sparse_loss(model, x, box_margin=0.1, num_samples=100000, tau=10.0):
     with torch.no_grad():
         min_bound = x[:, :3].min(dim=0)[0]
         max_bound = x[:, :3].max(dim=0)[0]
         margin = (max_bound - min_bound) * box_margin
         min_bound -= margin
         max_bound += margin
+
+        # Uniform sampling in expanded bounding box
         uniform_xyz = torch.rand((num_samples, 3), device=x.device) * (max_bound - min_bound) + min_bound
         uniform_rgb = torch.ones_like(uniform_xyz) * 0.5
         uniform_input = torch.cat([uniform_xyz, uniform_rgb], dim=-1)
-    f_uniform = model(uniform_input)
-    # 強迫這些點的 sdf 遠離 0（不應落在表面附近）
-    return torch.relu(0.25 - f_uniform.abs()).mean()
+
+    # Predict SDF values
+    sdf_pred = model(uniform_input)
+
+    # Sparse loss: exp(-tau * |s(q)|)
+    sparse_loss = torch.exp(-tau * sdf_pred.abs()).mean()
+
+    return sparse_loss
 
 def compute_color_consistency_loss(x, f_x, alpha=10.0, sample_size=1024):
     N = x.shape[0]
@@ -170,7 +178,7 @@ def compute_loss(model, x, x_noisy_full, epsilon, normals):
 
     # narrow band mask: 只在靠近表面的位置計算 eikonal loss
     sdf_abs = torch.abs(f_pred.detach().squeeze(-1))  # detach 避免回傳梯度
-    mask = sdf_abs < 0.05  # threshold 可調整：0.05～0.2 之間都可嘗試
+    mask = sdf_abs < 0.2  # threshold 可調整：0.05～0.2 之間都可嘗試
     if mask.any():
         loss_eikonal = ((grad_norm[mask] - 1) ** 2).mean()
     else:
@@ -186,10 +194,10 @@ def compute_loss(model, x, x_noisy_full, epsilon, normals):
     # Part 6: Color Consistency loss
     loss_consistency = compute_color_consistency_loss(x, f_x, alpha=20.0, sample_size=2048)
 
-    # Part 7: Outside loss
-    loss_outside = compute_outside_loss(model, x)
+    # Part 7: Sparse loss
+    loss_sparse = compute_sparse_loss(model, x)
     
     # return loss_sdf, loss_zero, loss_eikonal, loss_edge, loss_normal
     # return loss_sdf, loss_zero, loss_eikonal, loss_normal
     # return loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_consistency
-    return loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_consistency, loss_outside
+    return loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_consistency, loss_sparse
