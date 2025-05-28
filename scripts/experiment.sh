@@ -34,7 +34,7 @@ python3 train.py \
   --file_name "$FILEMANE" \
   --schedule_path "$SCHE_DIR/${SCHEDULE}.json" \
   --para "$PARAMETER"
-echo "[1/3] Fininsh Training"
+echo -e "\033[32m[1/2] Finish Training\033[0m"
 
 # 2) inference
 python3 inference.py \
@@ -42,12 +42,7 @@ python3 inference.py \
   --ckpt_path "$CKPT_DIR/sdf_model_${EXP_NAME}_${FILEMANE}.pt" \
   --output_mesh "$OUT_DIR/sdf_model_${EXP_NAME}_${FILEMANE}.ply" \
   --file_name "$FILEMANE"
-echo "[2/3] Fininsh Inferencing"
-
-# 3) plotting loss courve
-# python3 tools/plot_loss.py --log "$LOG_DIR/sdf_model_${EPOCHS}_${EXP_NAME}.txt"
-# echo "[3/3] Fininsh Plotting Loss Curve"
-
+echo -e "\033[32m[2/2] Finish Inferencing\033[0m"
 
 
 # ./experiment.sh NeuS_pe6_beta100_4.2_.5_.01to.05_[]_.05_1_adamw_cosAnn_narrow_band_msk0.05 2500 0.005 0.01

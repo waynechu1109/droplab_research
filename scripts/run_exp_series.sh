@@ -24,21 +24,22 @@ export OMP_NUM_THREADS=1
 #     done
 # done
 
-# for file in dtu; do
-#     for lr in 0.0025; do
-#         ./scripts/experiment.sh "two_stage_test2_hash_fo0.05_$lr" "$lr" "$file" schedule 0.05
-#     done
-# done
-
-lr_list=(0.0025 0.0035 0.0045)
-fo_list=(0.05 0.075 0.1 0.125 0.15)
-files=(arc rock shoes dtu church)
-
-for file in "${files[@]}"; do
-  for lr in "${lr_list[@]}"; do
-    for fo in "${fo_list[@]}"; do
-      tag="exp4_hash_${file}_lr${lr}_fo${fo}"
-      ./scripts/experiment.sh "$tag" "$lr" "$file" schedule "$fo"
+for file in arc; do
+    for lr in 0.0025; do
+        echo -e "\033[34mhash_normalized_test_fo0.1_$lr\033[0m"
+        ./scripts/experiment.sh "hash_normalized_test_fo0.1_$lr" "$lr" "$file" schedule 0.1
     done
-  done
 done
+
+# lr_list=(0.0025 0.0035 0.0045)
+# fo_list=(0.05 0.075 0.1 0.125 0.15)
+# files=(arc rock shoes dtu church)
+
+# for file in "${files[@]}"; do
+#   for lr in "${lr_list[@]}"; do
+#     for fo in "${fo_list[@]}"; do
+#       tag="exp4_hash_${file}_lr${lr}_fo${fo}"
+#       ./scripts/experiment.sh "$tag" "$lr" "$file" schedule "$fo"
+#     done
+#   done
+# done

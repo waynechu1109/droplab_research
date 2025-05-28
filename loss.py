@@ -28,7 +28,7 @@ def compute_outside_loss(model, x, box_margin=0.1, num_samples=50000):
         uniform_input = torch.cat([uniform_xyz, uniform_rgb], dim=-1)
     f_uniform = model(uniform_input)
     # 強迫這些點的 sdf 遠離 0（不應落在表面附近）
-    return torch.relu(0.05 - f_uniform.abs()).mean()
+    return torch.relu(0.25 - f_uniform.abs()).mean()
 
 def compute_color_consistency_loss(x, f_x, alpha=10.0, sample_size=1024):
     N = x.shape[0]

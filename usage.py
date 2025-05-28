@@ -34,8 +34,8 @@ images_list = [
     # 'data/church.jpg',
     # 'data/church.jpg'
 
-    # 'data/arc.jpg',
-    # 'data/arc.jpg'
+    'data/arc.jpg',
+    'data/arc.jpg'
 
     # 'data/mtPres.jpg',
     # 'data/mtPres.jpg'
@@ -43,8 +43,8 @@ images_list = [
     # 'data/rock.jpg',
     # 'data/rock.jpg'
 
-    'data/gizah.jpg',
-    'data/gizah.jpg'
+    # 'data/gizah.jpg',
+    # 'data/gizah.jpg'
 
     # 'data/shoes.jpg',
     # 'data/shoes.jpg'
@@ -169,17 +169,14 @@ if __name__ == '__main__':
     all_pts3d = np.concatenate(all_pts3d, axis=0)
     all_colors = np.concatenate(all_colors, axis=0)
 
-    # # 歸一化到 [-1, 1]
-    # # 計算每個維度的最小與最大值
-    # mins = all_pts3d.min(axis=0)
-    # maxs = all_pts3d.max(axis=0)
-    # # 中心與半範圍
-    # centres = (maxs + mins) / 2.0
-    # scales = (maxs - mins) / 2.0
-    # # 防止除以零
-    # scales[scales == 0] = 1.0
-    # # 執行歸一化
-    # all_pts3d = (all_pts3d - centres) / scales
+    # 歸一化到 [-1, 1]
+    # 計算每個維度的最小與最大值
+    mins = all_pts3d.min(axis=0)
+    maxs = all_pts3d.max(axis=0)
+    centre = (maxs + mins) / 2.0
+    scale = np.max(maxs - mins) / 2.0  # 單一尺度
+
+    all_pts3d = (all_pts3d - centre) / scale
 
     # --- 下采樣開始 ---
     # 隨機抽樣

@@ -6,7 +6,7 @@
         "pe_freqs": 3,
         "pe_ramp": 500,
         "loss_weights": {
-            "loss_sdf": 5.0,
+            "loss_sdf": 4.0,
             "loss_zero": 1.0,
             "loss_eikonal": {
                 "loss_eikonal_init": 0.01,
@@ -23,7 +23,7 @@
         "pe_freqs": 8,
         "pe_ramp": 600,
         "loss_weights": {
-            "loss_sdf": 4.2,
+            "loss_sdf": 3.5,
             "loss_zero": 0.5,
             "loss_eikonal": {
                 "loss_eikonal_init": 0.01,
