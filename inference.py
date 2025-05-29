@@ -11,12 +11,14 @@ parser = argparse.ArgumentParser(description="SDFNet inference script.")
 parser.add_argument('--res', type=int, default=256, help="Voxel grid resolution.")
 parser.add_argument('--ckpt_path', type=str, required=True, help="Path to model checkpoint.")
 parser.add_argument('--output_mesh', type=str, required=True, help="Output mesh file path.")
+# parser.add_argument('--para', type=float, required=True, help="Parameter want to control.")
 parser.add_argument('--file_name', type=str, required=True, help="Pointcloud file name.")
 args = parser.parse_args()
 
 res = args.res  # voxel resolution
 ckpt_path = args.ckpt_path
 output_mesh = args.output_mesh
+# para = args.para
 file_name = args.file_name
 
 # read pointcloud for the range to construct the mesh
@@ -25,28 +27,24 @@ pcd = o3d.io.read_point_cloud(f"data/output_pointcloud_{file_name}_normal.ply")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # load model checkpoint
-# try:
-#     checkpoint = torch.load(ckpt_path, map_location=device)
+try:
+    checkpoint = torch.load(ckpt_path, map_location=device)
 
-#     # 如果是新格式（包含 pe_freqs）
-#     if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
-#         pe_freqs = checkpoint.get("pe_freqs")
-#         model = SDFNet(pe_freqs=pe_freqs).to(device)
-#         model.pe_mask = torch.ones(pe_freqs, dtype=torch.bool).to(device)
-#         model.load_state_dict(checkpoint["model_state_dict"])
-#     else:
-#         print("Fail to load model: this is the wrong format")
-#         exit(1)
+    # 如果是新格式（包含 pe_freqs）
+    if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
+        pe_freqs = checkpoint.get("pe_freqs")
+        model = SDFNet(pe_freqs=pe_freqs).to(device)
+        model.pe_mask = torch.ones(pe_freqs, dtype=torch.bool).to(device)
+        model.load_state_dict(checkpoint["model_state_dict"])
+    else:
+        print("Fail to load model: this is the wrong format")
+        exit(1)
 
-#     print(f"Model loaded successfully with pe_freqs = {pe_freqs}")
+    print(f"Model loaded successfully with pe_freqs = {pe_freqs}")
 
-# except Exception as e:
-#     print("Fail to load model:", e)
-#     exit(1)
-
-checkpoint = torch.load(ckpt_path, map_location=device)
-model = SDFNet().to(device)
-model.load_state_dict(checkpoint["model_state_dict"])
+except Exception as e:
+    print("Fail to load model:", e)
+    exit(1)
 
 # model = SDFNet(pe_freqs=int(para)).to(device)
 # model.pe_mask = torch.ones(int(para), dtype=torch.bool).to(device)  # 全開
@@ -100,14 +98,20 @@ print("SDF predicted.")
 sdf_grid = sdf_pred.reshape(res, res, res)
 print("SDF range:", np.min(sdf_grid), np.max(sdf_grid))
 
-# --- 只保留最大連通區塊（前處理） ---
-# binary_mask = np.abs(sdf_grid) < 0.005
+# # --- 只保留最大連通區塊（前處理） ---
+# binary_mask = np.abs(sdf_grid) < 0.0008
 # labels = measure.label(binary_mask, connectivity=1)
 # props = measure.regionprops(labels)
 
-# if len(props) > 0:
-#     largest = max(props, key=lambda r: r.area)
-#     sdf_grid[labels != largest.label] = 1.0  # 或 0.5, 遠離 zero
+# if len(props) == 0:
+#     raise ValueError("找不到任何零交界區域，請檢查 SDF 預測範圍")
+
+# # 找出最大區塊
+# largest_region = max(props, key=lambda r: r.area)
+# mask = labels == largest_region.label
+
+# # 把非最大區塊的值設成遠離零交界（避免被提取）
+# sdf_grid[~mask] = 0.5  # >0 或 <0 均可，只要遠離 level=0 即可
 
 # --- 判斷是否有表面可用 marching cubes ---
 if np.min(sdf_grid) >= 0 or np.max(sdf_grid) <= 0:
@@ -129,3 +133,11 @@ if not np.isfinite(verts).all():
 mesh = trimesh.Trimesh(vertices=verts, faces=faces, process=False)
 mesh.export(output_mesh)
 print("Mesh exported to output/sdf_surface.ply")
+
+
+# mesh = o3d.geometry.TriangleMesh()
+# mesh.vertices = o3d.utility.Vector3dVector(verts)
+# mesh.triangles = o3d.utility.Vector3iVector(faces)
+# mesh.compute_vertex_normals()
+# o3d.io.write_triangle_mesh("output/sdf_surface.ply", mesh)
+# print("Mesh exported to output/sdf_surface.ply")

@@ -17,32 +17,38 @@ import numpy as np
 from tqdm import tqdm
 from model import SDFNet
 from loss import compute_loss
+from torch.optim.lr_scheduler import LambdaLR
+from torch.optim.lr_scheduler import MultiStepLR
 from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import OneCycleLR
 
 parser = argparse.ArgumentParser(description="SDFNet training script.")
+# parser.add_argument('--epochs', type=int, default=5000, help="Number of training epochs.")
 parser.add_argument('--lr', type=float, default=0.005, help="Learning rate.")
+# parser.add_argument('--sigma', type=float, default=0.01, help="Noise sigma.")
 parser.add_argument('--desc', type=str, required=True, help="Experiment description.")
+# parser.add_argument('--para', type=float, required=True, help="Parameter want to control.")
 parser.add_argument('--log_path', type=str, required=True, help="Log file path.")
 parser.add_argument('--ckpt_path', type=str, required=True, help="Checkpoint save path.")
 parser.add_argument('--file_name', type=str, required=True, help="Pointcloud file name.")
 parser.add_argument('--schedule_path', type=str, required=True, help="Training schedule file name.")
-
-parser.add_argument('--para', type=float, required=True, help="Parameters want to control.")
+parser.add_argument('--para', type=float, required=True, help="Parameter want to control.")
 args = parser.parse_args()
 
+# epochs = args.epochs
 lr = args.lr
+# sigma = args.sigma
+para = args.para
 file_name = args.file_name
+
 desc = args.desc
 log_path = args.log_path
 ckpt_path = args.ckpt_path
 sche_path = args.schedule_path
 
-# weight_sparse_coarse = 0.005
-weight_sparse_coarse = args.para
-weight_sparse_fine = args.para
-
 # Load training schedule
 schedule = load_schedule(sche_path)
+
 total_epochs = schedule["total_epochs"]
 
 pointcloud_path = f"data/output_pointcloud_{file_name}_normal.ply"
@@ -53,6 +59,8 @@ print(f"Using device: {device}")
 
 # read pointcloud
 pcd = o3d.io.read_point_cloud(pointcloud_path)
+
+
 # get everything needed
 points = np.asarray(pcd.points)
 colors = np.asarray(pcd.colors)
@@ -60,33 +68,47 @@ normals = np.asarray(pcd.normals)
 
 x = torch.tensor(np.hstack((points, colors)), dtype=torch.float32)  # [N,6], x includes x and c
 x = x.to(device)
+
 assert np.allclose(np.asarray(pcd.points), x[:, :3].cpu().numpy(), atol=1e-5), "!!!!Mismatch between x and normals!!!!"
 
-# model = SDFNet(pe_freqs=schedule["fine"]["pe_freqs"]).to(device)
-model = SDFNet().to(device)
+# # generate point with noises (Sampling)
+# epsilon = torch.randn_like(x[:, :3]) * sigma # noise
+# x_noisy = x[:, :3] + epsilon  # [N,3]
+# x_noisy_full = torch.cat([x_noisy, x[:, 3:]], dim=1)  # add the color of x to x^n -> [N,6]
+
+# # Move noisy inputs and epsilon to device
+# x_noisy_full = x_noisy_full.to(device)
+# epsilon = epsilon.to(device)
+
+model = SDFNet(pe_freqs=schedule["fine"]["pe_freqs"]).to(device)
+# optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 optimizer = torch.optim.AdamW(
     model.parameters(),
     lr=lr,
     weight_decay=1e-2
 )
+
 # lr_tune
 scheduler = CosineAnnealingLR(
     optimizer,
     T_max=total_epochs,      
     eta_min=1e-5             # lowest lr
 )
+# scheduler = OneCycleLR(
+#     optimizer,
+#     max_lr=lr,
+#     epochs=total_epochs,
+#     steps_per_epoch=1,
+#     pct_start=0.1,
+#     anneal_strategy="cos",
+#     final_div_factor=10
+# )
 
 # training
 model.train()
 pbar = tqdm(range(total_epochs), desc="Training", ncols=100)
 
-# write the log file
 with open(log_path, "w") as f:
-    # f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_edge,loss_normal\n")
-    # f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_normal\n")
-    # f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_normal\n")
-    # f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_normal,loss_consistency\n")
-    # f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_normal,loss_consistency,learning_rate\n")
     f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_normal,loss_consistency,loss_sparse,learning_rate\n")
 
 for epoch in pbar:
@@ -94,8 +116,6 @@ for epoch in pbar:
     stage_cfg = get_stage_config(schedule, epoch)
 
     sigma = stage_cfg["sigma"]
-
-    # only used in Position Encoding experiments
     pe_max = stage_cfg["pe_freqs"]
     pe_ramp = stage_cfg["pe_ramp"]
 
@@ -109,7 +129,8 @@ for epoch in pbar:
     
     weight_normal        = stage_cfg["loss_weights"]["loss_normal"]
     weight_consistency   = stage_cfg["loss_weights"]["loss_consistency"]
-    weight_sparse       = weight_sparse_coarse
+
+    weight_sparse = para
 
     if stage_cfg is schedule["coarse"]:
         epoch_in_stage = epoch
@@ -117,7 +138,6 @@ for epoch in pbar:
     else:
         epoch_in_stage = epoch - schedule["coarse"]["epochs"]
         pe_min = schedule["coarse"]["pe_freqs"]
-        weight_sparse = weight_sparse_fine
 
     # generate point with noises (Sampling)
     epsilon = torch.randn_like(x[:, :3]) * sigma # noise
@@ -129,17 +149,12 @@ for epoch in pbar:
     epsilon = epsilon.to(device)
 
     # === Progressive PE Mask Update ===
-    # alpha = 1 / (1 + np.exp(-(epoch_in_stage - pe_ramp/2) / (pe_ramp/10)))
-    # active_pe = pe_min + int((pe_max - pe_min) * alpha)
-    # active_pe = pe_min + int((pe_max - pe_min) * min(epoch_in_stage / pe_ramp, 1.0))
-    # pe_mask = torch.zeros(model.pe_freqs, dtype=torch.bool)
-    # pe_mask[:active_pe] = True
-    # model.pe_mask = pe_mask.to(device)
+    active_pe = pe_min + int((pe_max - pe_min) * min(epoch_in_stage / pe_ramp, 1.0))
+    pe_mask = torch.zeros(model.pe_freqs, dtype=torch.bool)
+    pe_mask[:active_pe] = True
+    model.pe_mask = pe_mask.to(device)
 
     optimizer.zero_grad()
-    # loss_sdf, loss_zero, loss_eikonal, loss_edge, loss_normal = compute_loss(model, x, x_noisy_full, epsilon, normals)
-    # loss_sdf, loss_zero, loss_eikonal, loss_normal = compute_loss(model, x, x_noisy_full, epsilon, normals)
-    # loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_consistency = compute_loss(model, x, x_noisy_full, epsilon, normals)
     loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_consistency, loss_sparse = compute_loss(model, x, x_noisy_full, epsilon, normals)
 
     # -------------------weight setting--------------------
@@ -156,26 +171,19 @@ for epoch in pbar:
     optimizer.step() # update model's parameters
     scheduler.step() # update lr
 
-    current_lr = optimizer.param_groups[0]['lr']
     pbar.set_postfix(
         loss=loss_total.item(),
-        lr=current_lr
+        lr=optimizer.param_groups[0]['lr']
     )
-    
+
+    current_lr = optimizer.param_groups[0]['lr']
     # log each component
     with open(log_path, "a") as f:
-        # f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f},{loss_edge.item():.6f},{loss_normal.item():.6f}\n")
-        # f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f},{loss_normal.item():.6f}\n")
-        # f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f},{loss_normal.item():.6f},{loss_consistency.item():.6f}\n")
-        # f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f},{loss_normal.item():.6f},{loss_consistency.item():.6f},{current_lr:.8f}\n")
         f.write(f"{epoch},{loss_total.item():.6f},{loss_sdf.item():.6f},{loss_zero.item():.6f},{loss_eikonal.item():.6f},{loss_normal.item():.6f},{loss_consistency.item():.6f},{loss_sparse.item():.6f},{current_lr:.8f}\n")
 
 # torch.save(model.state_dict(), ckpt_path)
-# torch.save({
-#     "model_state_dict": model.state_dict(),
-#     "pe_freqs": pe_max
-# }, ckpt_path)
 torch.save({
-    "model_state_dict": model.state_dict()
+    "model_state_dict": model.state_dict(),
+    "pe_freqs": pe_max
 }, ckpt_path)
 print("Training finished.")

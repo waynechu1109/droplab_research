@@ -17,7 +17,7 @@ import torch.nn.functional as F
 #     return (gamma * grad_norm2).mean()
 
 # refer to SparseNeuS
-def compute_sparse_loss(model, x, box_margin=0.1, num_samples=100000, tau=20.0):
+def compute_sparse_loss(model, x, box_margin=0.1, num_samples=10000, tau=20.0):
     with torch.no_grad():
         min_bound = x[:, :3].min(dim=0)[0]
         max_bound = x[:, :3].max(dim=0)[0]
@@ -197,7 +197,4 @@ def compute_loss(model, x, x_noisy_full, epsilon, normals):
     # Part 7: Sparse loss
     loss_sparse = compute_sparse_loss(model, x)
     
-    # return loss_sdf, loss_zero, loss_eikonal, loss_edge, loss_normal
-    # return loss_sdf, loss_zero, loss_eikonal, loss_normal
-    # return loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_consistency
     return loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_consistency, loss_sparse
