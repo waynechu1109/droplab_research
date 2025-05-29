@@ -28,8 +28,8 @@ images_list = [
     # f'dust3r/data/co3d_subset/car/621_101777_202473/images/frame{num:06d}.jpg'
     # for num in range(1,202,30)
 
-    # f'data/dtu_scan24/images/{num:06d}.png'
-    # for num in range(1,48,5)
+    f'data/dtu_scan24/images/{num:06d}.png'
+    for num in range(1,48,5)
 
     # 'data/church.jpg',
     # 'data/church.jpg'
@@ -46,8 +46,8 @@ images_list = [
     # 'data/gizah.jpg',
     # 'data/gizah.jpg'
 
-    'data/shoes.jpg',
-    'data/shoes.jpg'
+    # 'data/shoes.jpg',
+    # 'data/shoes.jpg'
 
     # 'data/101_4.jpg',
     # 'data/101_5.jpg',
@@ -83,7 +83,7 @@ if __name__ == '__main__':
     batch_size = 1
     schedule = 'cosine'
     lr = 0.01
-    niter = 5000
+    niter = 1000
 
     # load the model
     model_name = "dust3r/checkpoints/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth"
