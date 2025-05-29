@@ -1,10 +1,10 @@
 {
-    "total_epochs": 2500,
+    "total_epochs": 5000,
     "coarse": {
-        "epochs": 1000,
+        "epochs": 2000,
         "sigma": 0.003,
         "pe_freqs": 3,
-        "pe_ramp": 500,
+        "pe_ramp": 1000,
         "loss_weights": {
             "loss_sdf": 4.0,
             "loss_zero": 0.0,
@@ -18,10 +18,10 @@
         }
     },
     "fine": {
-        "epochs": 1500,
+        "epochs": 3000,
         "sigma": 0.005,
         "pe_freqs": 8,
-        "pe_ramp": 600,
+        "pe_ramp": 1200,
         "loss_weights": {
             "loss_sdf": 3.5,
             "loss_zero": 0.05,
