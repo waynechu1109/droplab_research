@@ -26,11 +26,21 @@ export OMP_NUM_THREADS=1
 #   done
 # done
 
-for file in shoes arc dtu; do
-    for lr in 0.0025 0.0035 0.0045 0.0055; do
-        for sparse in 0.008 0.0082 0.0084 0.0086 0.0088 0.009; do
-            echo -e "\033[34m$file: pe_normalized_test_sparse${sparse}_${lr}\033[0m"
-            ./scripts/experiment.sh "pe_normalized_test_sparse${sparse}_${lr}" "$lr" "$file" schedule $sparse
+for file in arc shoes dtu; do
+    for lr in 0.0055; do
+        for sparse in 0.009; do
+            echo -e "\033[34m$file: pe(exp2)_normalized_test_sparse${sparse}_${lr}\033[0m"
+            ./scripts/experiment.sh "pe(exp2)_normalized_test_sparse${sparse}_${lr}" "$lr" "$file" schedule $sparse
         done
     done
 done
+
+
+# for file in arc; do
+#     for lr in 0.0025; do
+#         for sparse in 0.009; do
+#             echo -e "\033[34m$file: pe_normalized_test_sparse${sparse}_${lr}\033[0m"
+#             ./scripts/experiment.sh "pe_normalized_test_sparse${sparse}_${lr}" "$lr" "$file" schedule $sparse
+#         done
+#     done
+# done

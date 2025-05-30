@@ -11,6 +11,8 @@ from dust3r.cloud_opt import global_aligner, GlobalAlignerMode
 import numpy as np
 import trimesh
 
+import json
+
 VIS = False
 
 # images_list = [
@@ -28,8 +30,8 @@ images_list = [
     # f'dust3r/data/co3d_subset/car/621_101777_202473/images/frame{num:06d}.jpg'
     # for num in range(1,202,30)
 
-    f'data/dtu_scan24/images/{num:06d}.png'
-    for num in range(1,48,5)
+    # f'data/dtu_scan24/images/{num:06d}.png'
+    # for num in range(1,48,5)
 
     # 'data/church.jpg',
     # 'data/church.jpg'
@@ -46,8 +48,8 @@ images_list = [
     # 'data/gizah.jpg',
     # 'data/gizah.jpg'
 
-    # 'data/shoes.jpg',
-    # 'data/shoes.jpg'
+    'data/shoes.jpg',
+    'data/shoes.jpg'
 
     # 'data/101_4.jpg',
     # 'data/101_5.jpg',
@@ -83,7 +85,7 @@ if __name__ == '__main__':
     batch_size = 1
     schedule = 'cosine'
     lr = 0.01
-    niter = 1000
+    niter = 5000
 
     # load the model
     model_name = "dust3r/checkpoints/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth"
@@ -203,6 +205,10 @@ if __name__ == '__main__':
 
     # 儲存帶顏色與法向量的點雲
     o3d.io.write_point_cloud("data/output_pointcloud_.ply", pcd_down)
+
+    # store the centre point and scale information for inferencing 
+    with open("data/pointcloud_info.json", "w") as f:
+        json.dump({"centre": centre.tolist(), "scale": scale}, f)
 
     # pcd = o3d.geometry.PointCloud()
     # pcd.points = o3d.utility.Vector3dVector(all_pts3d)

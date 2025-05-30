@@ -26,15 +26,15 @@ SCHE_DIR="schedule"
 mkdir -p "$LOG_DIR" "$CKPT_DIR" "$OUT_DIR"
 
 # 1) training
-python3 train.py \
-  --lr "$LR" \
-  --desc "$EXP_NAME" \
-  --log_path "$LOG_DIR/sdf_model_${EXP_NAME}_${FILEMANE}.txt" \
-  --ckpt_path "$CKPT_DIR/sdf_model_${EXP_NAME}_${FILEMANE}.pt" \
-  --file_name "$FILEMANE" \
-  --schedule_path "$SCHE_DIR/${SCHEDULE}.json" \
-  --para "$PARAMETER"
-echo -e "\033[32m[1/2] Finish Training\033[0m"
+# python3 train.py \
+#   --lr "$LR" \
+#   --desc "$EXP_NAME" \
+#   --log_path "$LOG_DIR/sdf_model_${EXP_NAME}_${FILEMANE}.txt" \
+#   --ckpt_path "$CKPT_DIR/sdf_model_${EXP_NAME}_${FILEMANE}.pt" \
+#   --file_name "$FILEMANE" \
+#   --schedule_path "$SCHE_DIR/${SCHEDULE}.json" \
+#   --para "$PARAMETER"
+# echo -e "\033[32m[1/2] Finish Training\033[0m"
 
 # 2) inference
 python3 inference.py \

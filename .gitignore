@@ -1,5 +1,6 @@
 checkpoints/
 dust3r/
+data/
 
 *.txt
 *.pt
