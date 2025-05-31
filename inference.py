@@ -59,7 +59,7 @@ except Exception as e:
 # set the model to eval() mode for inference
 model.eval()
 
-# set the margin for mesh construction
+# set the margin for mesh construction. (10% outside the normalized boundary)
 min_bound = [-1.1, -1.1, -1.1]
 max_bound = [1.1, 1.1, 1.1]
 
@@ -111,8 +111,8 @@ verts, faces, normals, _ = measure.marching_cubes(sdf_grid, level=0.0, spacing=s
 # == Normalization Info (用於反標準化) ==
 verts = verts * scale + centre
 verts[:, 0] = -verts[:, 0]
-verts[:, 1] = -verts[:, 1]
-verts[:, 2] = -verts[:, 2]
+# verts[:, 1] = -verts[:, 1]
+# verts[:, 2] = -verts[:, 2]
 
 if not np.isfinite(verts).all():
     raise ValueError("Nan/Inf in verts, unable to construct mesh")
