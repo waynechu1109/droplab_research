@@ -26,7 +26,7 @@ export OMP_NUM_THREADS=1
 #   done
 # done
 
-for file in arc shoes dtu; do
+for file in arc; do
     for lr in 0.0055; do
         for sparse in 0.009; do
             echo -e "\033[34m$file: pe(exp2)_normalized_test_sparse${sparse}_${lr}\033[0m"

@@ -1,7 +1,7 @@
 import sys
 import argparse
 import open3d as o3d
-sys.path.append('./dust3r')
+sys.path.append('./../dust3r')
 
 from dust3r.inference import inference
 from dust3r.model import AsymmetricCroCo3DStereo
@@ -11,56 +11,11 @@ from dust3r.cloud_opt import global_aligner, GlobalAlignerMode
 import numpy as np
 import trimesh
 
+import argparse
 import json
+import glob
 
 VIS = False
-
-# images_list = [
-#     'dust3r/dtu_scan24/images/000000.png', 
-#     'dust3r/dtu_scan24/images/000001.png'
-#     'dust3r/dtu_scan24/images/000002.png'
-# ]
-
-# images_list = ['dust3r/croco/assets/Chateau2.png', 'dust3r/croco/assets/Chateau2.png']
-
-images_list = [
-    # f'dust3r/data/co3d_subset/apple/110_13051_23361/images/frame{num:06d}.jpg'
-    # for num in range(1,202,20)
-
-    # f'dust3r/data/co3d_subset/car/621_101777_202473/images/frame{num:06d}.jpg'
-    # for num in range(1,202,30)
-
-    # f'data/dtu_scan24/images/{num:06d}.png'
-    # for num in range(1,48,5)
-
-    # 'data/church.jpg',
-    # 'data/church.jpg'
-
-    # 'data/arc.jpg',
-    # 'data/arc.jpg'
-
-    # 'data/mtPres.jpg',
-    # 'data/mtPres.jpg'
-
-    # 'data/rock.jpg',
-    # 'data/rock.jpg'
-
-    # 'data/gizah.jpg',
-    # 'data/gizah.jpg'
-
-    'data/shoes.jpg',
-    'data/shoes.jpg'
-
-    # 'data/101_4.jpg',
-    # 'data/101_5.jpg',
-]
-
-def save_ply(filename, points):
-    with open(filename, 'w') as f:
-        f.write(f"ply\nformat ascii 1.0\nelement vertex {len(points)}\n")
-        f.write("property float x\nproperty float y\nproperty float z\nend_header\n")
-        for p in points:
-            f.write(f"{p[0]} {p[1]} {p[2]}\n")
 
 def save_colored_ply(filename, points, colors):
     with open(filename, 'w') as f:
@@ -78,8 +33,24 @@ if __name__ == '__main__':
                         help='the max number of points after downsample')
     parser.add_argument('--voxel_size', type=float, default=0.00001,
                         help='Voxel Grid 大小，建議佔 bbox 對角線的 1% 左右')
+    parser.add_argument('--file', type=str, help="File name to render.")
     args = parser.parse_args()
 
+    file_name = args.file
+
+    image_candidates = glob.glob(f"../data/{file_name}.jpg") + glob.glob(f"../data/{file_name}.png")
+    if len(image_candidates) == 0:
+        raise FileNotFoundError(f"No image found for {file_name}.jpg or .png in ../data/")
+    print("Successfully read input image.")
+    img_path = image_candidates[0]
+
+    images_list = [
+        # f'../data/dtu_scan24/images/{num:06d}.png'
+        # for num in range(1,48,5)
+
+        image_candidates[0],
+        image_candidates[0]
+    ]
 
     device = 'cuda'
     batch_size = 1
@@ -88,7 +59,7 @@ if __name__ == '__main__':
     niter = 5000
 
     # load the model
-    model_name = "dust3r/checkpoints/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth"
+    model_name = "../dust3r/checkpoints/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth"
     # you can put the path to a local checkpoint in model_name if needed
     model = AsymmetricCroCo3DStereo.from_pretrained(model_name).to(device)
     # load_images can take a list of images or a directory
@@ -171,8 +142,7 @@ if __name__ == '__main__':
     all_pts3d = np.concatenate(all_pts3d, axis=0)
     all_colors = np.concatenate(all_colors, axis=0)
 
-    # 歸一化到 [-1, 1]
-    # 計算每個維度的最小與最大值
+    # normalize to [-1, 1]
     mins = all_pts3d.min(axis=0)
     maxs = all_pts3d.max(axis=0)
     centre = (maxs + mins) / 2.0
@@ -204,11 +174,16 @@ if __name__ == '__main__':
     pcd_down, ind = pcd_down.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
 
     # 儲存帶顏色與法向量的點雲
-    o3d.io.write_point_cloud("data/output_pointcloud_.ply", pcd_down)
+    o3d.io.write_point_cloud("../data/output_pointcloud_.ply", pcd_down)
 
     # store the centre point and scale information for inferencing 
-    with open("data/pointcloud_info.json", "w") as f:
-        json.dump({"centre": centre.tolist(), "scale": scale}, f)
+    with open("../data/pointcloud_info.json", "w") as f:
+        json.dump({
+            "centre": centre.tolist(), 
+            "scale": scale,
+            "focals": focals.tolist(),
+            "poses": poses.tolist()
+        }, f, indent=4, sort_keys=True)
 
     # pcd = o3d.geometry.PointCloud()
     # pcd.points = o3d.utility.Vector3dVector(all_pts3d)
@@ -220,10 +195,9 @@ if __name__ == '__main__':
     # pcd_down = pcd.voxel_down_sample(voxel_size=args.voxel_size)
     # all_pts3d = np.asarray(pcd_down.points)
     # all_colors = (np.asarray(pcd_down.colors) * 255).astype(np.uint8)
-    # # --- 下采樣結束 ---
 
-    # # save_colored_ply("data/output_pointcloud_.ply", all_pts3d, all_colors)
-    # o3d.io.write_point_cloud("data/output_pointcloud_.ply", all_pts3d)
+    # # save_colored_ply("../data/output_pointcloud_.ply", all_pts3d, all_colors)
+    # o3d.io.write_point_cloud("../data/output_pointcloud_.ply", all_pts3d)
         
 
 
