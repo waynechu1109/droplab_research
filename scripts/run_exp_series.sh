@@ -27,7 +27,7 @@ export OMP_NUM_THREADS=1
 # done
 
 
-for file in shoes dtu; do
+for file in dtu_114_32 dtu_110_43 dtu_65_47; do
     for lr in 0.0055; do
         for loss_render in 0.3; do
             echo -e "\033[34m$file: pe(exp2)_normalized_test_frender${loss_render}_${lr}\033[0m"

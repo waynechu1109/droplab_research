@@ -174,10 +174,10 @@ if __name__ == '__main__':
     pcd_down, ind = pcd_down.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
 
     # 儲存帶顏色與法向量的點雲
-    o3d.io.write_point_cloud("../data/output_pointcloud_.ply", pcd_down)
+    o3d.io.write_point_cloud(f"../data/output_pointcloud_{file_name}_normal.ply", pcd_down)
 
     # store the centre point and scale information for inferencing 
-    with open("../data/pointcloud_info.json", "w") as f:
+    with open(f"../data/pointcloud_{file_name}_normal_info.json", "w") as f:
         json.dump({
             "centre": centre.tolist(), 
             "scale": scale,
