@@ -243,7 +243,7 @@ def compute_loss(model, x, x_noisy_full, epsilon, normals, H, W, K, cam_pose, gt
 
     # Part 7: Sparse loss
     if is_a100:
-        loss_sparse = compute_sparse_loss(model, x, num_samples=50000)
+        loss_sparse = compute_sparse_loss(model, x, num_samples=100000)
     else:
         loss_sparse = compute_sparse_loss(model, x, num_samples=10000)
 
@@ -251,7 +251,7 @@ def compute_loss(model, x, x_noisy_full, epsilon, normals, H, W, K, cam_pose, gt
     rays_o, rays_d = generate_rays(H, W, K, cam_pose, x.device)
     # 隨機取 subset
     if is_a100:
-        max_rays = 2048
+        max_rays = 4096
     else:
         max_rays = 256
     perm = torch.randperm(rays_o.shape[0], device=rays_o.device)[:max_rays]
