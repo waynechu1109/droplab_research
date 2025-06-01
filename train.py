@@ -143,7 +143,8 @@ print(f'save debug img.')
 plt.imsave("debug_gt_image.png", gt_image_np)
 
 
-x = torch.cat([points, colors], dim=1) # [N,6], x includes x and c
+# x = torch.cat([points, colors], dim=1) # [N,6], x includes x and c
+x = points
 x = x.to(device)
 
 assert np.allclose(np.asarray(pcd.points), x[:, :3].cpu().numpy(), atol=1e-5), "!!!!Mismatch between x and normals!!!!"

@@ -74,11 +74,11 @@ def compute_sparse_loss(model, x, num_samples=10000, box_margin=0.1, tau=20.0):
 
         # Uniform sampling in expanded bounding box
         uniform_xyz = torch.rand((num_samples, 3), device=x.device) * (max_bound - min_bound) + min_bound
-        uniform_rgb = torch.ones_like(uniform_xyz) * 0.5
-        uniform_input = torch.cat([uniform_xyz, uniform_rgb], dim=-1)
+        # uniform_rgb = torch.ones_like(uniform_xyz) * 0.5
+        # uniform_input = torch.cat([uniform_xyz, uniform_rgb], dim=-1)
 
     # Predict SDF values
-    sdf_pred = model(uniform_input)
+    sdf_pred, _ = model(uniform_xyz)
 
     # Sparse loss: exp(-tau * |s(q)|)
     sparse_loss = torch.exp(-tau * sdf_pred.abs()).mean()
@@ -109,7 +109,7 @@ def compute_normal_loss(model, x, normals, batch_size=8192):
         x_batch = x[i:i+batch_size].clone().detach().requires_grad_(True)
         normals_batch = normals[i:i+batch_size]
 
-        f_pred = model(x_batch)
+        f_pred, _ = model(x_batch)
 
         grads = torch.autograd.grad(
             outputs=f_pred,
@@ -192,8 +192,8 @@ def compute_edge_loss(x: torch.Tensor,
 # total loss calculation
 def compute_loss(model, x, x_noisy_full, epsilon, normals, H, W, K, cam_pose, gt_image, is_a100):
     x.requires_grad_(True)
-    f_x = model(x)              # f(x, c) 應接收完整 6 維輸入
-    f_x_noisy = model(x_noisy_full)
+    f_x, _ = model(x)            
+    f_x_noisy, _ = model(x_noisy_full)
 
     # Part 1: MSE between predicted SDF at xⁿ and actual |ε|
     # true_dist = epsilon.norm(dim=1)
@@ -208,7 +208,7 @@ def compute_loss(model, x, x_noisy_full, epsilon, normals, H, W, K, cam_pose, gt
     # Part 3: Eikonal: ||∇f(x^n, c) - 1||
     x_noisy_full.requires_grad_(True) # enable partial differentiation
     # x.requires_grad_()
-    f_pred = model(x_noisy_full)
+    f_pred, _ = model(x_noisy_full)
     # f_pred = model(x)
     grads = torch.autograd.grad(
         outputs=f_pred,       # f(xⁿ, c)

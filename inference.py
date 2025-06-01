@@ -71,9 +71,10 @@ grid_x, grid_y, grid_z = np.meshgrid(x_vals, y_vals, z_vals)
 points = np.stack([grid_x, grid_y, grid_z], axis=-1).reshape(-1, 3)  # [M, 3] = [res*res*res, 3]
 
 # same color for every voxel
-color_cond = np.array([[0.5, 0.5, 0.5]])
-colors = np.repeat(color_cond, len(points), axis=0)
-query = np.concatenate([points, colors], axis=1)  # [M, 6]
+# color_cond = np.array([[0.5, 0.5, 0.5]])
+# colors = np.repeat(color_cond, len(points), axis=0)
+# query = np.concatenate([points, colors], axis=1)  # [M, 6]
+query = points
 
 # batched the pcd then input them to the model
 def batched_query(model, query_np, batch_size=32768):
@@ -81,7 +82,8 @@ def batched_query(model, query_np, batch_size=32768):
     with torch.no_grad():
         for i in range(0, len(query_np), batch_size):
             batch = torch.tensor(query_np[i:i+batch_size], dtype=torch.float32).to(device)
-            pred = model(batch).cpu().numpy()
+            sdf, _ = model(batch)
+            pred = sdf.cpu().numpy()
             out.append(pred)
     return np.concatenate(out, axis=0)
 
@@ -117,8 +119,17 @@ verts[:, 0] = -verts[:, 0]
 if not np.isfinite(verts).all():
     raise ValueError("Nan/Inf in verts, unable to construct mesh")
 
+# === Predict vertex RGB ===
+verts_norm = (verts - centre) / scale
+verts_tensor = torch.tensor(verts_norm, dtype=torch.float32).to(device)
+
+with torch.no_grad():
+    _, rgb_pred = model(verts_tensor)
+    rgb_np = (rgb_pred.clamp(0, 1).cpu().numpy() * 255).astype(np.uint8)  # [V, 3]
+
 # construct mesh
-mesh = trimesh.Trimesh(vertices=verts, faces=faces, process=False)
+# mesh = trimesh.Trimesh(vertices=verts, faces=faces, process=False)
+mesh = trimesh.Trimesh(vertices=verts, faces=faces, vertex_colors=rgb_np, process=False)
 
 # mesh = mesh.split(only_watertight=False)
 # mesh = max(mesh, key=lambda m: m.area)
