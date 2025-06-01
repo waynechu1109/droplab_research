@@ -14,7 +14,8 @@
                 "loss_eikonal_ramp": 300
             },
             "loss_normal": 0.1,
-            "loss_consistency": 0.0
+            "loss_consistency": 0.0,
+            "loss_sparse": 0.009 
         }
     },
     "fine": {
@@ -31,7 +32,8 @@
                 "loss_eikonal_ramp": 500
             },
             "loss_normal": 0.05,
-            "loss_consistency": 0.01
+            "loss_consistency": 0.01,
+            "loss_sparse": 0.009 
         }
     }
 }

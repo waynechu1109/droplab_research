@@ -64,7 +64,7 @@ def compute_render_color_loss(model, rays_o, rays_d, gt_image, cam_pose, K, imag
 
 
 # refer to SparseNeuS
-def compute_sparse_loss(model, x, box_margin=0.1, num_samples=10000, tau=20.0):
+def compute_sparse_loss(model, x, num_samples=10000, box_margin=0.1, tau=20.0):
     with torch.no_grad():
         min_bound = x[:, :3].min(dim=0)[0]
         max_bound = x[:, :3].max(dim=0)[0]
@@ -190,7 +190,7 @@ def compute_edge_loss(x: torch.Tensor,
     return 10000*loss_edge
 
 # total loss calculation
-def compute_loss(model, x, x_noisy_full, epsilon, normals, H, W, K, cam_pose, gt_image):
+def compute_loss(model, x, x_noisy_full, epsilon, normals, H, W, K, cam_pose, gt_image, is_a100):
     x.requires_grad_(True)
     f_x = model(x)              # f(x, c) 應接收完整 6 維輸入
     f_x_noisy = model(x_noisy_full)
@@ -242,12 +242,18 @@ def compute_loss(model, x, x_noisy_full, epsilon, normals, H, W, K, cam_pose, gt
     # loss_consistency = compute_color_consistency_loss(x, f_x, alpha=20.0, sample_size=2048)
 
     # Part 7: Sparse loss
-    loss_sparse = compute_sparse_loss(model, x)
+    if is_a100:
+        loss_sparse = compute_sparse_loss(model, x, num_samples=50000)
+    else:
+        loss_sparse = compute_sparse_loss(model, x, num_samples=10000)
 
     # Part 8: Color render loss
     rays_o, rays_d = generate_rays(H, W, K, cam_pose, x.device)
     # 隨機取 subset
-    max_rays = 256
+    if is_a100:
+        max_rays = 2048
+    else:
+        max_rays = 256
     perm = torch.randperm(rays_o.shape[0], device=rays_o.device)[:max_rays]
     rays_o, rays_d = rays_o[perm], rays_d[perm]
     loss_render = compute_render_color_loss(model, rays_o, rays_d, gt_image, cam_pose, K, (H, W))

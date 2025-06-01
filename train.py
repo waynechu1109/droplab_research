@@ -56,6 +56,16 @@ def render_pointcloud(points: torch.Tensor,
 
     return image, depth
 
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('true', '1'):
+        return True
+    elif v.lower() in ('false', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
+
 parser = argparse.ArgumentParser(description="SDFNet training script.")
 parser.add_argument('--lr', type=float, default=0.005, help="Learning rate.")
 parser.add_argument('--desc', type=str, required=True, help="Experiment description.")
@@ -63,10 +73,12 @@ parser.add_argument('--log_path', type=str, required=True, help="Log file path."
 parser.add_argument('--ckpt_path', type=str, required=True, help="Checkpoint save path.")
 parser.add_argument('--file_name', type=str, required=True, help="Pointcloud file name.")
 parser.add_argument('--schedule_path', type=str, required=True, help="Training schedule file name.")
+parser.add_argument('--is_a100', type=str2bool, required=True, help="Training on A100 or not.")
 parser.add_argument('--para', type=float, required=True, help="Parameter want to control.")
 args = parser.parse_args()
 
 lr = args.lr
+is_a100 = args.is_a100
 para = args.para
 file_name = args.file_name
 
@@ -179,12 +191,13 @@ for epoch in pbar:
     weight_normal        = stage_cfg["loss_weights"]["loss_normal"]
     # weight_consistency   = stage_cfg["loss_weights"]["loss_consistency"]
 
-    weight_sparse = 0.009
-    weight_render = para
+    weight_sparse        = stage_cfg["loss_weights"]["loss_sparse"]
+    weight_render        = para
 
     if stage_cfg is schedule["coarse"]:
         epoch_in_stage = epoch
         pe_min = 0
+        weight_render = 0.0
     else:
         epoch_in_stage = epoch - schedule["coarse"]["epochs"]
         pe_min = schedule["coarse"]["pe_freqs"]
@@ -214,7 +227,8 @@ for epoch in pbar:
                                                                                                  W,
                                                                                                  K,
                                                                                                  cam_pose,
-                                                                                                 gt_image)
+                                                                                                 gt_image,
+                                                                                                 is_a100)
 
     # -------------------weight setting--------------------
     w_eik = eik_init + (weight_eikonal_final - eik_init) * min(epoch / eik_ramp, 1.0)
