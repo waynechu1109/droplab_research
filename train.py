@@ -198,7 +198,7 @@ for epoch in pbar:
     if stage_cfg is schedule["coarse"]:
         epoch_in_stage = epoch
         pe_min = 0
-        weight_render = 0.0
+        weight_render = 1.0
     else:
         epoch_in_stage = epoch - schedule["coarse"]["epochs"]
         pe_min = schedule["coarse"]["pe_freqs"]

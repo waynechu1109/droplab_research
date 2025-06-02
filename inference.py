@@ -131,8 +131,5 @@ with torch.no_grad():
 # mesh = trimesh.Trimesh(vertices=verts, faces=faces, process=False)
 mesh = trimesh.Trimesh(vertices=verts, faces=faces, vertex_colors=rgb_np, process=False)
 
-# mesh = mesh.split(only_watertight=False)
-# mesh = max(mesh, key=lambda m: m.area)
-
 mesh.export(output_mesh)
 print("Mesh exported.")

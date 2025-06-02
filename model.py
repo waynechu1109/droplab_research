@@ -8,30 +8,42 @@ class SDFNet(nn.Module):
                  pe_freqs: int = 6,
                  hidden_dim: int = 256,
                  num_layers: int = 8,
-                 skip_connection_at: int = 4):
+                 skip_connection_at: int = 4,
+                 use_viewdirs: bool = False):
         super().__init__()
         self.pe_freqs = pe_freqs
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
         self.skip = skip_connection_at
+        self.use_viewdirs = use_viewdirs
 
-        # PE(xyz): 3 + 2*pe_freqs*3
-        self.pe_dim = 3 + 2 * pe_freqs * 3
+        self.pe_dim = 3 + 2 * pe_freqs * 3  # positional encoding for xyz
         self.input_dim = self.pe_dim
+
         self.pe_mask = torch.ones(self.pe_freqs, dtype=torch.bool)
 
+        # Geometry backbone (shared)
         layers = []
         for i in range(num_layers):
             in_dim = self.input_dim if i == 0 else hidden_dim
             if i == self.skip:
                 in_dim += self.input_dim
-            lin = weight_norm(nn.Linear(in_dim, hidden_dim))
-            layers += [lin, nn.Softplus(beta=100)]
+            layers += [weight_norm(nn.Linear(in_dim, hidden_dim)),
+                       nn.Softplus(beta=100)]
         self.layers = nn.ModuleList(layers)
 
-        self.sdf_out     = nn.Linear(hidden_dim, 1)  # SDF prediction
-        self.rgb_out     = nn.Linear(hidden_dim, 3)  # RGB prediction
-        self.feature_out = nn.Linear(hidden_dim, hidden_dim)  # optional feature head
+        self.sdf_out = nn.Linear(hidden_dim, 1)
+
+        # Optional view direction input for RGB
+        view_dim = 3 if use_viewdirs else 0
+        self.rgb_head = nn.Sequential(
+            nn.Linear(hidden_dim + view_dim, hidden_dim),
+            nn.ReLU(inplace=True),
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.ReLU(inplace=True),
+            nn.Linear(hidden_dim // 2, 3),
+            nn.Sigmoid()  # output RGB in [0,1]
+        )
 
     def pos_enc(self, x: torch.Tensor) -> torch.Tensor:
         enc = [x]
@@ -45,24 +57,30 @@ class SDFNet(nn.Module):
                 enc.append(torch.zeros_like(x))
         return torch.cat(enc, dim=-1)
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor, view_dirs: torch.Tensor = None):
         """
         Args:
-          x: [N,3] = xyz
+            x: [N, 3] → xyz
+            view_dirs: [N, 3] or None
         Returns:
-          sdf: [N]
-          rgb_pred: [N, 3]
+            sdf: [N]
+            rgb_pred: [N, 3]
         """
-        pe = self.pos_enc(x)  # [N, pe_dim]
-        net_input = pe
-
-        h = net_input
+        pe = self.pos_enc(x)
+        h = pe
         for i in range(self.num_layers):
             if i == self.skip:
-                h = torch.cat([h, net_input], dim=-1)
+                h = torch.cat([h, pe], dim=-1)
             h = self.layers[2 * i + 1](self.layers[2 * i](h))
 
-        sdf = self.sdf_out(h).squeeze(-1)         # [N]
-        rgb_pred = torch.sigmoid(self.rgb_out(h)) # [N, 3]
+        sdf = self.sdf_out(h).squeeze(-1)  # [N]
 
+        # RGB prediction (optionally conditioned on view direction)
+        if self.use_viewdirs:
+            assert view_dirs is not None, "view_dirs must be provided if use_viewdirs=True"
+            h_rgb = torch.cat([h, view_dirs], dim=-1)
+        else:
+            h_rgb = h
+
+        rgb_pred = self.rgb_head(h_rgb)  # [N, 3]
         return sdf, rgb_pred

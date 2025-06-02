@@ -60,7 +60,8 @@ def compute_render_color_loss(model, rays_o, rays_d, gt_image, cam_pose, K, imag
         print("WARNING: Rendered RGB invalid (empty or nan)")
         return torch.tensor(0.0, device=device)
 
-    return F.mse_loss(pred_rgb, gt_rgb)
+    # return F.mse_loss(pred_rgb, gt_rgb)
+    return F.l1_loss(pred_rgb, gt_rgb)
 
 
 # refer to SparseNeuS
@@ -235,8 +236,11 @@ def compute_loss(model, x, x_noisy_full, epsilon, normals, H, W, K, cam_pose, gt
     # loss_edge = compute_edge_loss(x, f_x, k=8, alpha=10.0)
 
     # Part 5: Normal loss
-    normals = torch.tensor(normals, dtype=torch.float32, device=x.device)
-    loss_normal = compute_normal_loss(model, x, normals, batch_size=10000)
+    if not isinstance(normals, torch.Tensor):
+        normals = torch.tensor(normals, dtype=torch.float32, device=x.device)
+    else:
+        normals = normals.clone().detach().to(dtype=torch.float32, device=x.device)
+    loss_normal = compute_normal_loss(model, x, normals, batch_size=50000)
 
     # Part 6: Color Consistency loss
     # loss_consistency = compute_color_consistency_loss(x, f_x, alpha=20.0, sample_size=2048)
@@ -245,7 +249,7 @@ def compute_loss(model, x, x_noisy_full, epsilon, normals, H, W, K, cam_pose, gt
     if is_a100:
         loss_sparse = compute_sparse_loss(model, x, num_samples=100000)
     else:
-        loss_sparse = compute_sparse_loss(model, x, num_samples=10000)
+        loss_sparse = compute_sparse_loss(model, x, num_samples=7500)
 
     # Part 8: Color render loss
     rays_o, rays_d = generate_rays(H, W, K, cam_pose, x.device)
