@@ -33,6 +33,10 @@ with open(f"data/pointcloud_{file_name}_normal_info.json", "r") as f:
     info = json.load(f)
 centre = np.array(info["centre"])
 scale = info["scale"]
+cam_pose = np.array(info["poses"][0])[:3, :4]  # [3,4]
+R = cam_pose[:, :3]
+t = cam_pose[:, 3]
+cam_origin = -R.T @ t  # 相機位置 in world space
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -77,17 +81,35 @@ points = np.stack([grid_x, grid_y, grid_z], axis=-1).reshape(-1, 3)  # [M, 3] = 
 query = points
 
 # batched the pcd then input them to the model
-def batched_query(model, query_np, batch_size=32768):
+def batched_query(model, query_np, cam_origin, batch_size=32768):
+    """
+    Args:
+        model: the SDFNet model
+        query_np: (N, 3) numpy array of query points (world space)
+        cam_origin: (3,) numpy array of camera origin
+        batch_size: number of points per batch
+    Returns:
+        (N,) numpy array of predicted SDF
+    """
     out = []
+    cam_origin_tensor = torch.tensor(cam_origin, dtype=torch.float32, device=device).unsqueeze(0)
+
     with torch.no_grad():
         for i in range(0, len(query_np), batch_size):
-            batch = torch.tensor(query_np[i:i+batch_size], dtype=torch.float32).to(device)
-            sdf, _ = model(batch)
-            pred = sdf.cpu().numpy()
-            out.append(pred)
+            pts = query_np[i:i+batch_size]  # (B, 3)
+            batch = torch.tensor(pts, dtype=torch.float32).to(device)
+
+            # === 新增：計算 view_dirs ===
+            view_dirs = cam_origin_tensor - batch  # (B, 3)
+            view_dirs = view_dirs / torch.norm(view_dirs, dim=-1, keepdim=True)
+
+            # === 傳入模型 ===
+            sdf, _ = model(batch, view_dirs=view_dirs)
+            out.append(sdf.cpu().numpy())
+
     return np.concatenate(out, axis=0)
 
-sdf_pred = batched_query(model, query)
+sdf_pred = batched_query(model, query, cam_origin)
 print("SDF predicted.")
 
 # --- reshape 成 3D grid ---
@@ -123,8 +145,13 @@ if not np.isfinite(verts).all():
 verts_norm = (verts - centre) / scale
 verts_tensor = torch.tensor(verts_norm, dtype=torch.float32).to(device)
 
+# 計算 view_dirs
+cam_origin_tensor = torch.tensor(cam_origin, dtype=torch.float32, device=device).unsqueeze(0)  # [1,3]
+view_dirs = cam_origin_tensor - verts_tensor  # [V,3]
+view_dirs = view_dirs / torch.norm(view_dirs, dim=-1, keepdim=True)  # normalize
+
 with torch.no_grad():
-    _, rgb_pred = model(verts_tensor)
+    _, rgb_pred = model(verts_tensor, view_dirs=view_dirs)
     rgb_np = (rgb_pred.clamp(0, 1).cpu().numpy() * 255).astype(np.uint8)  # [V, 3]
 
 # construct mesh

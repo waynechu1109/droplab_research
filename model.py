@@ -9,7 +9,7 @@ class SDFNet(nn.Module):
                  hidden_dim: int = 256,
                  num_layers: int = 8,
                  skip_connection_at: int = 4,
-                 use_viewdirs: bool = False):
+                 use_viewdirs: bool = True):
         super().__init__()
         self.pe_freqs = pe_freqs
         self.hidden_dim = hidden_dim
@@ -57,14 +57,15 @@ class SDFNet(nn.Module):
                 enc.append(torch.zeros_like(x))
         return torch.cat(enc, dim=-1)
 
-    def forward(self, x: torch.Tensor, view_dirs: torch.Tensor = None):
+    def forward(self, x: torch.Tensor, view_dirs: torch.Tensor = None, return_rgb=True):
         """
         Args:
-            x: [N, 3] → xyz
-            view_dirs: [N, 3] or None
+            x: [N, 3] → xyz positions
+            view_dirs: [N, 3], optional viewing directions
+            return_rgb: whether to compute rgb output
         Returns:
             sdf: [N]
-            rgb_pred: [N, 3]
+            rgb_pred: [N, 3] (or None if return_rgb=False)
         """
         pe = self.pos_enc(x)
         h = pe
@@ -75,9 +76,12 @@ class SDFNet(nn.Module):
 
         sdf = self.sdf_out(h).squeeze(-1)  # [N]
 
-        # RGB prediction (optionally conditioned on view direction)
+        if not return_rgb:
+            return sdf, None
+
+        # compute RGB only if required
         if self.use_viewdirs:
-            assert view_dirs is not None, "view_dirs must be provided if use_viewdirs=True"
+            assert view_dirs is not None, "view_dirs must be provided if use_viewdirs=True and return_rgb=True"
             h_rgb = torch.cat([h, view_dirs], dim=-1)
         else:
             h_rgb = h

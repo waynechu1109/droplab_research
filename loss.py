@@ -30,23 +30,29 @@ def generate_rays(H, W, K, pose, device):
     return rays_o.to(device), rays_d.to(device)
 
 # refer to NeuS
+import torch
+import torch.nn.functional as F
+
 def compute_render_color_loss(model, rays_o, rays_d, gt_image, cam_pose, K, image_size):
     device = rays_o.device
     H, W = image_size
 
-    pred_rgb = volume_rendering(model, rays_o, rays_d, K, cam_pose, gt_image, (H, W), device=device)
+    # == 加入 view_dirs ==
+    view_dirs = -F.normalize(rays_d, dim=-1)  # [R, 3]
 
-    # 將 rays_o 投影為像素座標
+    # == 呼叫 volume_rendering 並傳入 view_dirs ==
+    pred_rgb = volume_rendering(model, rays_o, rays_d, view_dirs=view_dirs, K=K, pose=cam_pose, image=gt_image, image_size=(H, W), device=device)
+
+    # == 投影至像素座標 ==
     R, t = cam_pose[:3, :3], cam_pose[:3, 3]
     rays_o_world = rays_o * model.scale + model.centre
-    x_cam = (R @ rays_o_world.T + t.unsqueeze(1)).T 
-    # x_cam = (R @ rays_o.T + t.unsqueeze(1)).T  # [R, 3]s
+    x_cam = (R @ rays_o_world.T + t.unsqueeze(1)).T  # [R, 3]
     proj = (K @ x_cam.T).T
     x_pixel = proj[:, :2] / proj[:, 2:3]  # [R, 2]
     x_pixel = x_pixel.round().long()
     u, v = x_pixel[:, 0], x_pixel[:, 1]
 
-    # valid mask
+    # == 僅保留在影像內的像素 ==
     valid = (u >= 0) & (u < W) & (v >= 0) & (v < H)
     if valid.sum() == 0:
         print("WARNING: No valid projected pixels for render loss.")
@@ -60,7 +66,6 @@ def compute_render_color_loss(model, rays_o, rays_d, gt_image, cam_pose, K, imag
         print("WARNING: Rendered RGB invalid (empty or nan)")
         return torch.tensor(0.0, device=device)
 
-    # return F.mse_loss(pred_rgb, gt_rgb)
     return F.l1_loss(pred_rgb, gt_rgb)
 
 
@@ -79,7 +84,7 @@ def compute_sparse_loss(model, x, num_samples=10000, box_margin=0.1, tau=20.0):
         # uniform_input = torch.cat([uniform_xyz, uniform_rgb], dim=-1)
 
     # Predict SDF values
-    sdf_pred, _ = model(uniform_xyz)
+    sdf_pred, _ = model(uniform_xyz, return_rgb=False)
 
     # Sparse loss: exp(-tau * |s(q)|)
     sparse_loss = torch.exp(-tau * sdf_pred.abs()).mean()
@@ -110,7 +115,7 @@ def compute_normal_loss(model, x, normals, batch_size=8192):
         x_batch = x[i:i+batch_size].clone().detach().requires_grad_(True)
         normals_batch = normals[i:i+batch_size]
 
-        f_pred, _ = model(x_batch)
+        f_pred, _ = model(x_batch, return_rgb=False)
 
         grads = torch.autograd.grad(
             outputs=f_pred,
@@ -193,8 +198,8 @@ def compute_edge_loss(x: torch.Tensor,
 # total loss calculation
 def compute_loss(model, x, x_noisy_full, epsilon, normals, H, W, K, cam_pose, gt_image, is_a100):
     x.requires_grad_(True)
-    f_x, _ = model(x)            
-    f_x_noisy, _ = model(x_noisy_full)
+    f_x, _ = model(x, return_rgb=False)
+    f_x_noisy, _ = model(x_noisy_full, return_rgb=False)
 
     # Part 1: MSE between predicted SDF at xⁿ and actual |ε|
     # true_dist = epsilon.norm(dim=1)
@@ -209,7 +214,7 @@ def compute_loss(model, x, x_noisy_full, epsilon, normals, H, W, K, cam_pose, gt
     # Part 3: Eikonal: ||∇f(x^n, c) - 1||
     x_noisy_full.requires_grad_(True) # enable partial differentiation
     # x.requires_grad_()
-    f_pred, _ = model(x_noisy_full)
+    f_pred, _ = model(x_noisy_full, return_rgb=False)
     # f_pred = model(x)
     grads = torch.autograd.grad(
         outputs=f_pred,       # f(xⁿ, c)
