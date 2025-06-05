@@ -29,7 +29,7 @@ export OMP_NUM_THREADS=1
 # dtu_65_47 dtu_73_42 dtu_82_14 dtu_90_41 dtu_110_43 dtu_114_32 dtu shoes
 
 
-for file in dtu_65_47 dtu_73_42 dtu_82_14 dtu_90_41 dtu_110_43 dtu_114_32 dtu shoes; do
+for file in dtu_73_42 dtu_82_14 dtu_90_41 dtu_110_43 dtu_114_32 dtu shoes; do
     for lr in 1e-3; do
         for loss_render in 50.0; do
             echo -e "\033[34m$file: pe_inNormalized_a100_3rgb_render10.0~${loss_render}_${lr}\033[0m"

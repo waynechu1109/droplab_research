@@ -151,7 +151,7 @@ pose_normed[:3, 3] = t_norm
 cam_pose = pose_normed
 
 # render
-# unnorm_points = points * scale + centre
+# pcd is already normalized
 print("Rendering in normalized space...")
 print("Cam pose:\n", cam_pose)
 if isinstance(points, torch.Tensor):

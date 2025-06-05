@@ -6,6 +6,65 @@ import open3d as o3d
 import json
 from model import SDFNet
 from tqdm import tqdm
+import matplotlib.pyplot as plt 
+import matplotlib.image as mpimg
+
+def create_camera_frustum(intrinsic, extrinsic, width, height, scale=0.2):
+    fx, fy = intrinsic.get_focal_length()
+    cx, cy = intrinsic.get_principal_point()
+    near, far = 0.1, scale  # 視距範圍
+
+    # 四個角點 (near plane)
+    points = np.array([
+        [(0 - cx) * near / fx, (0 - cy) * near / fy, near],
+        [(width - cx) * near / fx, (0 - cy) * near / fy, near],
+        [(width - cx) * near / fx, (height - cy) * near / fy, near],
+        [(0 - cx) * near / fx, (height - cy) * near / fy, near],
+        [0, 0, 0]  # camera center
+    ])
+    
+    # 轉換到世界座標系
+    points_h = np.concatenate([points, np.ones((5, 1))], axis=1)
+    world_pts = (extrinsic @ points_h.T).T[:, :3]
+
+    lines = [
+        [4, 0], [4, 1], [4, 2], [4, 3],
+        [0, 1], [1, 2], [2, 3], [3, 0]
+    ]
+    colors = [[1, 0, 0] for _ in lines]  # 紅色
+
+    frustum = o3d.geometry.LineSet(
+        points=o3d.utility.Vector3dVector(world_pts),
+        lines=o3d.utility.Vector2iVector(lines),
+    )
+    frustum.colors = o3d.utility.Vector3dVector(colors)
+    return frustum
+
+def line_set_to_mesh(line_set, radius=0.002):
+    """Convert Open3D LineSet to a mesh of thin cylinders."""
+    mesh_list = []
+    pts = np.asarray(line_set.points)
+    for start_idx, end_idx in np.asarray(line_set.lines):
+        start = pts[start_idx]
+        end = pts[end_idx]
+        cyl = o3d.geometry.TriangleMesh.create_cylinder(radius=radius, height=np.linalg.norm(end - start))
+        cyl.paint_uniform_color([1, 0, 0])
+        cyl.compute_vertex_normals()
+
+        # Align and translate the cylinder
+        direction = (end - start)
+        direction /= np.linalg.norm(direction)
+        rot_mat = o3d.geometry.get_rotation_matrix_from_xyz(
+            [0, np.arccos(direction[2]), np.arctan2(direction[1], direction[0])]
+        )
+        cyl.rotate(rot_mat, center=(0, 0, 0))
+        cyl.translate(start)
+        mesh_list.append(cyl)
+
+    combined = mesh_list[0]
+    for mesh in mesh_list[1:]:
+        combined += mesh
+    return combined
 
 parser = argparse.ArgumentParser(description="SDFNet inference script.")
 parser.add_argument('--res', type=int, default=256, help="Voxel grid resolution.")
@@ -27,6 +86,7 @@ with open(f"data/pointcloud_{file_name}_normal_info.json", "r") as f:
     info = json.load(f)
 centre = np.array(info["centre"])
 scale = info["scale"]
+focals = np.array(info["focals"])[0][0]
 cam_pose = np.array(info["poses"][0])[:3, :4]
 R = cam_pose[:, :3]
 t = cam_pose[:, 3]
@@ -46,12 +106,13 @@ else:
 model.eval()
 
 # === Generate voxel grid in normalized space ===
-min_bound = [-1.1, -1.1, -1.1]
-max_bound = [1.1, 1.1, 1.1]
+min_bound = [-1.0, -1.0, -1.0]
+max_bound = [1.0, 1.0, 1.0]
 x_vals = np.linspace(min_bound[0], max_bound[0], res)
 y_vals = np.linspace(min_bound[1], max_bound[1], res)
 z_vals = np.linspace(min_bound[2], max_bound[2], res)
-grid_x, grid_y, grid_z = np.meshgrid(x_vals, y_vals, z_vals)
+grid_z, grid_y, grid_x = np.meshgrid(z_vals, y_vals, x_vals, indexing='ij')
+
 points = np.stack([grid_x, grid_y, grid_z], axis=-1).reshape(-1, 3)
 
 # === Batched SDF query ===
@@ -61,24 +122,41 @@ def batched_query(model, query_np, cam_origin, batch_size=32768):
     with torch.no_grad():
         for i in range(0, len(query_np), batch_size):
             batch = torch.tensor(query_np[i:i+batch_size], dtype=torch.float32).to(device)
-            view_dirs = cam_origin_tensor - batch
+            # view_dirs = cam_origin_tensor - batch
+            view_dirs = batch - cam_origin_tensor
             view_dirs = view_dirs / torch.norm(view_dirs, dim=-1, keepdim=True)
             sdf, _ = model(batch, view_dirs=view_dirs)
             out.append(sdf.cpu().numpy())
     return np.concatenate(out, axis=0)
 
 sdf_pred = batched_query(model, points, cam_origin)
-sdf_grid = sdf_pred.reshape(res, res, res)
+
+# 排除極端值後，找最大頻率落點（histogram mode）
+hist, bin_edges = np.histogram(sdf_pred, bins=200, range=(-3, 3))
+mode_center = bin_edges[np.argmax(hist)]
+
+# 對齊該模式中心
+sdf_pred_centered = sdf_pred - mode_center
+print("New median after centering:", np.median(sdf_pred_centered))
+
+sdf_grid = sdf_pred_centered.reshape(res, res, res)
+# sdf_grid = sdf_pred.reshape(res, res, res)
 
 if np.min(sdf_grid) >= 0 or np.max(sdf_grid) <= 0:
     raise ValueError("SDF field has no zero-crossing surface!")
 
 spacing_val = x_vals[1] - x_vals[0]
-spacing = (spacing_val, spacing_val, spacing_val)
-sdf_grid[np.abs(sdf_grid) > 0.02] = 1
+spacing = (z_vals[1] - z_vals[0], y_vals[1] - y_vals[0], x_vals[1] - x_vals[0])
+
+# sdf_grid[np.abs(sdf_grid) > 0.1] = 1
+thresh = np.percentile(np.abs(sdf_pred), 99.0)  # 只排除極端值
+# sdf_grid[np.abs(sdf_grid) > thresh] = 1
+# sdf_grid = np.clip(sdf_grid, -3.0, 3.0)
+
 verts, faces, normals, _ = measure.marching_cubes(sdf_grid, level=0.0, spacing=spacing)
 # move verts back to [-1, 1]
-verts = verts * spacing_val + min_bound[0] 
+verts = verts + np.array(min_bound)[::-1]
+verts = verts[:, [2, 1, 0]]
 
 verts_tensor = torch.tensor(verts, dtype=torch.float32, device=device)
 cam_origin_tensor = torch.tensor(cam_origin, dtype=torch.float32, device=device).unsqueeze(0)
@@ -98,7 +176,70 @@ o3d.io.write_triangle_mesh(output_mesh, mesh_o3d)
 
 print("Mesh exported.")
 
+print("SDF value stats:")
+print("Min:", np.min(sdf_pred))
+print("Max:", np.max(sdf_pred))
+print("Mean:", np.mean(sdf_pred))
+print("Percentiles:", np.percentile(sdf_pred, [0.1, 1, 25, 50, 75, 99, 99.9]))
+
+print("SDF grid min/max:", np.min(sdf_grid), np.max(sdf_grid))
+print("SDF grid shape:", sdf_grid.shape)
+print("Zero-crossing count:", np.sum(np.abs(sdf_grid) < 0.01))
+
+print("First few verts:", verts[:5])
+print("Point cloud bounds:", np.asarray(pcd.points).min(0), np.asarray(pcd.points).max(0))
+print(f"Shape of verts: {verts.shape}")
+print("Verts bounds:", verts.min(0), verts.max(0))
+
 points_np = np.asarray(pcd.points)
 for i in range(3):
     print(f"PointCloud axis={i} bbox:", points_np[:, i].min(), points_np[:, i].max(), 
           f"; Mesh verts axis={i} bbox:", verts[:, i].min(), verts[:, i].max())
+    
+sdf_slice_output_path = output_mesh + "_SDFslice.png"
+slice_img = sdf_grid[res // 2]
+plt.imsave(sdf_slice_output_path, slice_img, cmap='RdBu', vmin=-1, vmax=1)
+print(f"Raw SDF slice image saved to {sdf_slice_output_path}")
+
+
+plt.hist(sdf_pred, bins=200, range=(-3, 3))
+plt.axvline(np.median(sdf_pred), color='r', label='median')
+plt.axvline(mode_center, color='g', label='mode center')
+plt.axvline(0, color='k', linestyle='--', label='zero')
+plt.legend()
+plt.title("SDF value distribution")
+plt.savefig(output_mesh + "_sdf_hist.png")
+
+
+# render mesh with camera pose
+W, H = 512, 512
+intrinsic = o3d.camera.PinholeCameraIntrinsic()
+intrinsic.set_intrinsics(width=W, height=H, fx=focals, fy=focals, cx=W / 2, cy=H / 2)
+
+cam_pose[:3, 3] = (cam_pose[:3, 3] - centre) / scale
+param = o3d.camera.PinholeCameraParameters()
+param.intrinsic = intrinsic
+extrinsic = np.eye(4, dtype=np.float64)
+extrinsic[:3, :4] = cam_pose.astype(np.float64)
+param.extrinsic = extrinsic
+
+vis = o3d.visualization.Visualizer()
+vis.create_window(visible=False, width=W, height=H)
+vis.add_geometry(mesh_o3d)
+ctr = vis.get_view_control()
+ctr.convert_from_pinhole_camera_parameters(param)
+vis.poll_events()
+vis.update_renderer()
+image = vis.capture_screen_float_buffer(True)
+vis.destroy_window()
+
+image_np = (np.asarray(image) * 255).astype(np.uint8)
+rendered_output_path = output_mesh + "_rendered.png"
+plt.imsave(rendered_output_path, image_np)
+print("Rendered image saved to rendered_mesh.png")
+
+# frustum = create_camera_frustum(intrinsic, extrinsic, W, H)
+# frustum_mesh = line_set_to_mesh(frustum, radius=0.002)
+# mesh_with_cam = mesh_o3d + frustum_mesh
+# o3d.io.write_triangle_mesh(output_mesh, mesh_with_cam)
+# print(f"Combined mesh with camera saved to: {output_mesh}")
