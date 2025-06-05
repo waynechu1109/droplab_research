@@ -8,6 +8,43 @@ from model import SDFNet
 from tqdm import tqdm
 import matplotlib.pyplot as plt 
 import matplotlib.image as mpimg
+from PIL import Image
+import glob
+
+hist_ = False
+slice = False
+render_verts = False
+
+def render_pointcloud(points: torch.Tensor,
+                      colors: torch.Tensor,
+                      cam_pose: torch.Tensor,
+                      K: torch.Tensor,
+                      image_size: tuple[int, int]
+                      ) -> tuple[torch.Tensor, torch.Tensor]:
+    device = points.device
+    H, W = image_size
+
+    n = points.shape[0]
+    pts_h = torch.cat([points, torch.ones(n, 1, device=device)], dim=1)  # (n,4)
+    cam_h = (cam_pose @ pts_h.T).T
+    Xc, Yc, Zc = cam_h[:, 0], cam_h[:, 1], cam_h[:, 2]
+
+    proj = (K @ cam_h[:, :3].T).T
+    u = (proj[:, 0] / proj[:, 2]).round().long()
+    v = (proj[:, 1] / proj[:, 2]).round().long()
+
+    valid = (Zc > 0) & (u >= 0) & (u < W) & (v >= 0) & (v < H)
+    u, v, Zc, cols = u[valid], v[valid], Zc[valid], colors[valid]
+
+    image = torch.ones((H, W, 3), device=device) * 0.0  # 全黑背景
+    depth = torch.full((H, W), 1e9, device=device)      # 大數字，避免被擋住
+
+    for xi, yi, zi, ci in zip(u, v, Zc, cols):
+        if zi < depth[yi, xi]:
+            depth[yi, xi] = zi
+            image[yi, xi] = ci
+
+    return image, depth
 
 def create_camera_frustum(intrinsic, extrinsic, width, height, scale=0.2):
     fx, fy = intrinsic.get_focal_length()
@@ -148,8 +185,8 @@ if np.min(sdf_grid) >= 0 or np.max(sdf_grid) <= 0:
 spacing_val = x_vals[1] - x_vals[0]
 spacing = (z_vals[1] - z_vals[0], y_vals[1] - y_vals[0], x_vals[1] - x_vals[0])
 
-# sdf_grid[np.abs(sdf_grid) > 0.1] = 1
-thresh = np.percentile(np.abs(sdf_pred), 99.0)  # 只排除極端值
+sdf_grid[np.abs(sdf_grid) > 0.1] = 1
+# thresh = np.percentile(np.abs(sdf_pred), 95.0)  # 只排除極端值
 # sdf_grid[np.abs(sdf_grid) > thresh] = 1
 # sdf_grid = np.clip(sdf_grid, -3.0, 3.0)
 
@@ -196,50 +233,61 @@ for i in range(3):
     print(f"PointCloud axis={i} bbox:", points_np[:, i].min(), points_np[:, i].max(), 
           f"; Mesh verts axis={i} bbox:", verts[:, i].min(), verts[:, i].max())
     
-sdf_slice_output_path = output_mesh + "_SDFslice.png"
-slice_img = sdf_grid[res // 2]
-plt.imsave(sdf_slice_output_path, slice_img, cmap='RdBu', vmin=-1, vmax=1)
-print(f"Raw SDF slice image saved to {sdf_slice_output_path}")
+if slice:
+    sdf_slice_output_path = output_mesh + "_SDFslice.png"
+    slice_img = sdf_grid[res // 2]
+    plt.imsave(sdf_slice_output_path, slice_img, cmap='RdBu', vmin=-1, vmax=1)
+    print(f"Raw SDF slice image saved to {sdf_slice_output_path}")
+
+if hist_:
+    plt.hist(sdf_pred, bins=200, range=(-3, 3))
+    plt.axvline(np.median(sdf_pred), color='r', label='median')
+    plt.axvline(mode_center, color='g', label='mode center')
+    plt.axvline(0, color='k', linestyle='--', label='zero')
+    plt.legend()
+    plt.title("SDF value distribution")
+    plt.savefig(output_mesh + "_sdf_hist.png")
 
 
-plt.hist(sdf_pred, bins=200, range=(-3, 3))
-plt.axvline(np.median(sdf_pred), color='r', label='median')
-plt.axvline(mode_center, color='g', label='mode center')
-plt.axvline(0, color='k', linestyle='--', label='zero')
-plt.legend()
-plt.title("SDF value distribution")
-plt.savefig(output_mesh + "_sdf_hist.png")
+if render_verts:
+    # Step 0: intrinsic
+    image_candidates = glob.glob(f"data/{file_name}.jpg") + glob.glob(f"data/{file_name}.png")
+    if len(image_candidates) == 0:
+        raise FileNotFoundError(f"No image found for {file_name}.jpg or .png in data/")
+    print("Successfully read input image.")
+    img_path = image_candidates[0] 
+    with Image.open(img_path) as img:
+        W, H = img.size
+    intrinsic = o3d.camera.PinholeCameraIntrinsic()
+    intrinsic.set_intrinsics(width=W, height=H, fx=focals, fy=focals, cx=W / 2, cy=H / 2)
 
+    # Step 1-4: normalize camera pose
+    R = cam_pose[:3, :3]
+    t = cam_pose[:3, 3]
+    cam_pos = -R.T @ t
+    cam_pos_norm = (cam_pos - centre) / scale
+    t_norm = -R @ cam_pos_norm
 
-# render mesh with camera pose
-W, H = 512, 512
-intrinsic = o3d.camera.PinholeCameraIntrinsic()
-intrinsic.set_intrinsics(width=W, height=H, fx=focals, fy=focals, cx=W / 2, cy=H / 2)
+    cam_pose_normed = np.eye(4)
+    cam_pose_normed[:3, :3] = R
+    cam_pose_normed[:3, 3] = t_norm
 
-cam_pose[:3, 3] = (cam_pose[:3, 3] - centre) / scale
-param = o3d.camera.PinholeCameraParameters()
-param.intrinsic = intrinsic
-extrinsic = np.eye(4, dtype=np.float64)
-extrinsic[:3, :4] = cam_pose.astype(np.float64)
-param.extrinsic = extrinsic
+    # Step 5: assign to Open3D param
+    param = o3d.camera.PinholeCameraParameters()
+    param.intrinsic = intrinsic
+    param.extrinsic = cam_pose_normed
 
-vis = o3d.visualization.Visualizer()
-vis.create_window(visible=False, width=W, height=H)
-vis.add_geometry(mesh_o3d)
-ctr = vis.get_view_control()
-ctr.convert_from_pinhole_camera_parameters(param)
-vis.poll_events()
-vis.update_renderer()
-image = vis.capture_screen_float_buffer(True)
-vis.destroy_window()
+    # === 渲染 ===
+    mesh_points = torch.tensor(np.asarray(mesh_o3d.vertices), dtype=torch.float32, device=device)
+    mesh_colors = torch.tensor(np.asarray(mesh_o3d.vertex_colors), dtype=torch.float32, device=device)
 
-image_np = (np.asarray(image) * 255).astype(np.uint8)
-rendered_output_path = output_mesh + "_rendered.png"
-plt.imsave(rendered_output_path, image_np)
-print("Rendered image saved to rendered_mesh.png")
+    rendered, _ = render_pointcloud(
+        mesh_points, 
+        mesh_colors, 
+        torch.tensor(cam_pose_normed, dtype=torch.float32, device=device),
+        torch.tensor(intrinsic.intrinsic_matrix, dtype=torch.float32, device=device),
+        (H, W)
+    )
 
-# frustum = create_camera_frustum(intrinsic, extrinsic, W, H)
-# frustum_mesh = line_set_to_mesh(frustum, radius=0.002)
-# mesh_with_cam = mesh_o3d + frustum_mesh
-# o3d.io.write_triangle_mesh(output_mesh, mesh_with_cam)
-# print(f"Combined mesh with camera saved to: {output_mesh}")
+    rendered_np = rendered.cpu().numpy()
+    plt.imsave(output_mesh + "_rendered_point.png", rendered_np)
