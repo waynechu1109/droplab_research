@@ -22,7 +22,7 @@ class SDFNet(nn.Module):
 
         self.pe_mask = torch.ones(self.pe_freqs, dtype=torch.bool)
 
-        # Geometry backbone (shared)
+        # === Geometry backbone (MLP) ===
         layers = []
         for i in range(num_layers):
             in_dim = self.input_dim if i == 0 else hidden_dim
@@ -34,15 +34,17 @@ class SDFNet(nn.Module):
 
         self.sdf_out = nn.Linear(hidden_dim, 1)
 
-        # Optional view direction input for RGB
+        # === RGB head with stronger capacity ===
         view_dim = 3 if use_viewdirs else 0
         self.rgb_head = nn.Sequential(
             nn.Linear(hidden_dim + view_dim, hidden_dim),
             nn.ReLU(inplace=True),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(inplace=True),
             nn.Linear(hidden_dim, hidden_dim // 2),
             nn.ReLU(inplace=True),
-            nn.Linear(hidden_dim // 2, 3),
-            nn.Sigmoid()  # output RGB in [0,1]
+            nn.Linear(hidden_dim // 2, 3)
+            # Sigmoid 移除，請於推論時再 .clamp(0,1)
         )
 
     def pos_enc(self, x: torch.Tensor) -> torch.Tensor:
@@ -79,7 +81,7 @@ class SDFNet(nn.Module):
         if not return_rgb:
             return sdf, None
 
-        # compute RGB only if required
+        # === RGB forward path ===
         if self.use_viewdirs:
             assert view_dirs is not None, "view_dirs must be provided if use_viewdirs=True and return_rgb=True"
             h_rgb = torch.cat([h, view_dirs], dim=-1)

@@ -34,6 +34,8 @@ def volume_rendering(model, rays_o, rays_d, view_dirs=None, K=None, pose=None, i
     sdf = sdf.reshape(R, num_samples)
     pred_rgb = pred_rgb.reshape(R, num_samples, 3)
 
+    # pred_rgb = pred_rgb.clamp(0.0, 1.0)
+
     # Step 4: SDF to density
     sigma = sdf_to_sigma(sdf)
 
@@ -52,5 +54,14 @@ def volume_rendering(model, rays_o, rays_d, view_dirs=None, K=None, pose=None, i
     # Step 6: Composite final color
     rendered_color = torch.sum(weights.unsqueeze(-1) * pred_rgb, dim=1)  # [R, 3]
     rendered_color = torch.nan_to_num(rendered_color, nan=0.0, posinf=1.0, neginf=0.0)
+    # print("pred_rgb mean:", pred_rgb.mean().item())
+    # print("rendered_color mean:", rendered_color.mean().item())
 
-    return rendered_color
+
+    # return rendered_color
+
+    ray_pts = rays_o.unsqueeze(1) + rays_d.unsqueeze(1) * z_vals.unsqueeze(-1)  # [R, N, 3]
+    composite_pts = torch.sum(weights.unsqueeze(-1) * ray_pts, dim=1)  # [R, 3]
+    composite_pts = torch.nan_to_num(composite_pts, nan=0.0, posinf=0.0, neginf=0.0)
+
+    return rendered_color, composite_pts

@@ -2,21 +2,6 @@ import torch
 import torch.nn.functional as F
 from volume_render import volume_rendering
 
-# def compute_color_smoothness_loss(x, f_x_grad, radius=0.05):
-#     # x: [N,6] = [xyz, rgb], f_x_grad: [N,3]
-#     pos = x[:, :3]
-#     rgb = x[:, 3:]
-    
-#     # 隨機 sample 周圍點差值（或預先建立鄰接結構）
-#     # 這裡以 torch.diff 模擬 RGB 局部 gradient
-#     rgb_var = torch.var(rgb, dim=1, unbiased=False)  # [N]
-    
-#     gamma = rgb_var / (rgb_var.max() + 1e-6)  # normalize 到 [0, 1]
-    
-#     grad_norm2 = f_x_grad.norm(dim=1) ** 2  # [N]
-    
-#     return (gamma * grad_norm2).mean()
-
 def generate_rays(H, W, K, pose, device):
     i, j = torch.meshgrid(
         torch.arange(W, device=device),
@@ -30,43 +15,42 @@ def generate_rays(H, W, K, pose, device):
     return rays_o.to(device), rays_d.to(device)
 
 # refer to NeuS
-import torch
-import torch.nn.functional as F
-
 def compute_render_color_loss(model, rays_o, rays_d, gt_image, cam_pose, K, image_size):
     device = rays_o.device
     H, W = image_size
 
-    # == 加入 view_dirs ==
+    # 反向方向
     view_dirs = -F.normalize(rays_d, dim=-1)  # [R, 3]
 
-    # == 呼叫 volume_rendering 並傳入 view_dirs ==
-    pred_rgb = volume_rendering(model, rays_o, rays_d, view_dirs=view_dirs, K=K, pose=cam_pose, image=gt_image, image_size=(H, W), device=device)
+    # rendering（含 sample 點）
+    rendered_color, composite_pts = volume_rendering(model, rays_o, rays_d, view_dirs=view_dirs, K=K, pose=cam_pose, image=gt_image, image_size=(H, W), device=device)
 
-    # == 投影至像素座標 ==
+    # 投影到像素座標
     R, t = cam_pose[:3, :3], cam_pose[:3, 3]
-    rays_o_world = rays_o * model.scale + model.centre
-    x_cam = (R @ rays_o_world.T + t.unsqueeze(1)).T  # [R, 3]
+    x_cam = (R @ composite_pts.T + t.unsqueeze(1)).T  # [N, 3]
     proj = (K @ x_cam.T).T
-    x_pixel = proj[:, :2] / proj[:, 2:3]  # [R, 2]
+    x_pixel = proj[:, :2] / (proj[:, 2:3] + 1e-8)  # 防止除以0
     x_pixel = x_pixel.round().long()
+
     u, v = x_pixel[:, 0], x_pixel[:, 1]
 
-    # == 僅保留在影像內的像素 ==
+    # 有效像素
     valid = (u >= 0) & (u < W) & (v >= 0) & (v < H)
     if valid.sum() == 0:
         print("WARNING: No valid projected pixels for render loss.")
         return torch.tensor(0.0, device=device)
 
     u, v = u[valid], v[valid]
-    pred_rgb = pred_rgb[valid]
-    gt_rgb = gt_image[v, u]
+    rendered_color = rendered_color[valid].clamp(0, 1)  # 限制範圍
+    gt_rgb = gt_image[v, u]  # [N, 3]
 
-    if pred_rgb.shape[0] == 0 or torch.isnan(pred_rgb).any():
-        print("WARNING: Rendered RGB invalid (empty or nan)")
-        return torch.tensor(0.0, device=device)
+    # render confidence mask（同樣是 [N, 1]）
+    render_conf = (gt_rgb.mean(dim=-1, keepdim=True) > 0.05).float()
 
-    return F.l1_loss(pred_rgb, gt_rgb)
+    # L1 loss + mask
+    loss_render = F.l1_loss(rendered_color * render_conf, gt_rgb * render_conf)
+
+    return loss_render
 
 
 # refer to SparseNeuS

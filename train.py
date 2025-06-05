@@ -46,8 +46,8 @@ def render_pointcloud(points: torch.Tensor,
     valid = (Zc > 0) & (u >= 0) & (u < W) & (v >= 0) & (v < H)
     u, v, Zc, cols = u[valid], v[valid], Zc[valid], colors[valid]
 
-    image = torch.zeros((H, W, 3), device=device)
-    depth = torch.full((H, W), float('inf'), device=device)
+    image = torch.ones((H, W, 3), device=device) * 0.0  # 全黑背景
+    depth = torch.full((H, W), 1e9, device=device)      # 大數字，避免被擋住
 
     for xi, yi, zi, ci in zip(u, v, Zc, cols):
         if zi < depth[yi, xi]:
@@ -103,6 +103,9 @@ points = np.asarray(pcd.points)
 colors = np.asarray(pcd.colors)
 normals = np.asarray(pcd.normals)
 
+points = torch.tensor(points, dtype=torch.float32, device=device)
+colors = torch.tensor(colors, dtype=torch.float32, device=device)
+
 # Read info json
 with open(f"data/pointcloud_{file_name}_normal_info.json") as f:
     info = json.load(f)
@@ -127,17 +130,39 @@ K = torch.tensor([
     [0,  0, 1]
 ], device=device)
 
-# take the 1st pose
-pose = poses[0]
+# === Step 1: 原始 pose ===
+pose = poses[0].clone()
+R = pose[:3, :3]  # [3,3]
+t = pose[:3, 3]   # [3,]
 
-# convert points/colors to torch
-points = torch.tensor(points, dtype=torch.float32, device=device)
-colors = torch.tensor(colors, dtype=torch.float32, device=device)
-cam_pose = pose.clone().detach().to(device)
+# === Step 2: normalize 相機位置 ===
+cam_pos = (-R.T @ t)                # camera position in world space
+cam_pos_norm = (cam_pos - centre) / scale  # normalize
+
+# === Step 3: 計算新的 t ===
+t_norm = -R @ cam_pos_norm          # 推回相機座標系下的 t'
+
+# === Step 4: 建立新 pose ===
+pose_normed = torch.eye(4, device=device)
+pose_normed[:3, :3] = R
+pose_normed[:3, 3] = t_norm
+
+# === 使用新 pose ===
+cam_pose = pose_normed
 
 # render
-unnorm_points = points * scale + centre
-gt_image, dep = render_pointcloud(unnorm_points, colors, cam_pose, K, (H, W))
+# unnorm_points = points * scale + centre
+print("Rendering in normalized space...")
+print("Cam pose:\n", cam_pose)
+if isinstance(points, torch.Tensor):
+    print("Points range:", torch.amin(points, dim=0), torch.amax(points, dim=0))
+else:
+    print("Points range:", np.min(points, axis=0), np.max(points, axis=0))
+
+gt_image, dep = render_pointcloud(points, colors, cam_pose, K, (H, W))
+print("gt_image stats:", gt_image.min().item(), gt_image.max().item())
+print("Any pixels rendered:", (gt_image > 0).sum().item())
+
 gt_image_np = gt_image.detach().cpu().numpy()
 print(f'save debug img.')
 plt.imsave("debug_gt_image.png", gt_image_np)
@@ -198,7 +223,7 @@ for epoch in pbar:
     if stage_cfg is schedule["coarse"]:
         epoch_in_stage = epoch
         pe_min = 0
-        weight_render = 1.0
+        weight_render = 10.0
     else:
         epoch_in_stage = epoch - schedule["coarse"]["epochs"]
         pe_min = schedule["coarse"]["pe_freqs"]
