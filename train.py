@@ -75,12 +75,12 @@ parser.add_argument('--ckpt_path', type=str, required=True, help="Checkpoint sav
 parser.add_argument('--file_name', type=str, required=True, help="Pointcloud file name.")
 parser.add_argument('--schedule_path', type=str, required=True, help="Training schedule file name.")
 parser.add_argument('--is_a100', type=str2bool, required=True, help="Training on A100 or not.")
-parser.add_argument('--para', type=float, required=True, help="Parameter want to control.")
+# parser.add_argument('--para', type=float, required=True, help="Parameter want to control.")
 args = parser.parse_args()
 
 lr = args.lr
 is_a100 = args.is_a100
-para = args.para
+# para = args.para
 file_name = args.file_name
 
 desc = args.desc
@@ -221,15 +221,21 @@ for epoch in pbar:
     # weight_consistency   = stage_cfg["loss_weights"]["loss_consistency"]
 
     weight_sparse        = stage_cfg["loss_weights"]["loss_sparse"]
-    weight_render        = para
+    weight_render        = stage_cfg["loss_weights"]["loss_render"]
 
     if stage_cfg is schedule["coarse"]:
         epoch_in_stage = epoch
         pe_min = 0
-        weight_render = 10.0
-    else:
+    elif stage_cfg is schedule["fine"]:
         epoch_in_stage = epoch - schedule["coarse"]["epochs"]
         pe_min = schedule["coarse"]["pe_freqs"]
+    elif stage_cfg is schedule["color"]:
+        epoch_in_stage = epoch - schedule["fine"]["epochs"] - schedule["coarse"]["epochs"]
+        pe_min = schedule["fine"]["pe_freqs"]
+        for name, param in model.named_parameters():
+            if "rgb_head" not in name:
+                param.requires_grad = False
+
 
     # generate point with noises (Sampling)
     epsilon = torch.randn_like(x[:, :3]) * sigma # noise

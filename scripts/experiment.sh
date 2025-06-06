@@ -16,7 +16,7 @@ LR=${2:-0.005}
 FILEMANE=$3
 SCHEDULE=$4
 IS_A100=$5
-PARAMETER=$6
+# PARAMETER=$6
 
 # dir. setting
 LOG_DIR="log"
@@ -34,8 +34,8 @@ python3 train.py \
   --ckpt_path "$CKPT_DIR/sdf_model_${EXP_NAME}_${FILEMANE}.pt" \
   --file_name "$FILEMANE" \
   --schedule_path "$SCHE_DIR/${SCHEDULE}.json" \
-  --is_a100 "$IS_A100" \
-  --para "$PARAMETER"
+  --is_a100 "$IS_A100" 
+  # --para "$PARAMETER"
 echo -e "\033[32m[1/2] Finish Training\033[0m"
 
 # 2) inference
