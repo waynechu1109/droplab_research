@@ -9,6 +9,7 @@ from tqdm import tqdm
 from model import SDFNet
 from loss import compute_loss
 import matplotlib.pyplot as plt
+import torchvision.transforms as T
 
 from torch.optim.lr_scheduler import LambdaLR
 from torch.optim.lr_scheduler import MultiStepLR
@@ -122,6 +123,7 @@ print("Successfully read input image.")
 img_path = image_candidates[0] 
 with Image.open(img_path) as img:
     W, H = img.size
+    img_tensor = T.ToTensor()(img).permute(1, 2, 0).to(device)
 cx, cy = W / 2, H / 2
 fx = fy = focals[0][0]
 K = torch.tensor([
@@ -131,9 +133,9 @@ K = torch.tensor([
 ], device=device)
 
 # === Step 1: 原始 pose ===
-pose = poses[0].clone()
-R = pose[:3, :3]  # [3,3]
-t = pose[:3, 3]   # [3,]
+pose_0 = poses[0].clone()
+R = pose_0[:3, :3]  # [3,3]
+t = pose_0[:3, 3]   # [3,]
 
 # === Step 2: normalize 相機位置 ===
 cam_pos = (-R.T @ t)                # camera position in world space
@@ -143,23 +145,24 @@ cam_pos_norm = (cam_pos - centre) / scale  # normalize
 t_norm = -R @ cam_pos_norm          # 推回相機座標系下的 t'
 
 # === Step 4: 建立新 pose ===
-pose_normed = torch.eye(4, device=device)
-pose_normed[:3, :3] = R
-pose_normed[:3, 3] = t_norm
+pose_0_normed = torch.eye(4, device=device)
+pose_0_normed[:3, :3] = R
+pose_0_normed[:3, 3] = t_norm
 
 # === 使用新 pose ===
-cam_pose = pose_normed
+cam_pose_0 = pose_0_normed
 
 # render
 # pcd is already normalized
 print("Rendering in normalized space...")
-print("Cam pose:\n", cam_pose)
+print("Cam pose_0:\n", cam_pose_0)
 if isinstance(points, torch.Tensor):
     print("Points range:", torch.amin(points, dim=0), torch.amax(points, dim=0))
 else:
     print("Points range:", np.min(points, axis=0), np.max(points, axis=0))
 
-gt_image, dep = render_pointcloud(points, colors, cam_pose, K, (H, W))
+# gt_image, dep = render_pointcloud(points, colors, cam_pose, K, (H, W))
+gt_image = img_tensor
 print("gt_image stats:", gt_image.min().item(), gt_image.max().item())
 print("Any pixels rendered:", (gt_image > 0).sum().item())
 
@@ -252,7 +255,7 @@ for epoch in pbar:
                                                                                                  H,
                                                                                                  W,
                                                                                                  K,
-                                                                                                 cam_pose,
+                                                                                                 cam_pose_0,
                                                                                                  gt_image,
                                                                                                  is_a100)
 

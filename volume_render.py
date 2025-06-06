@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 
-def sdf_to_sigma(sdf, alpha=10.0, beta=0.1):
+def sdf_to_sigma(sdf, alpha=75.0, beta=0.03):
     # Convert SDF to density (sigma), ref: NeuS paper
     # alpha: sharpness, beta: defines narrow band
     return alpha * torch.exp(- (sdf ** 2) / beta)
