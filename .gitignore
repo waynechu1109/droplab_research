@@ -1,6 +1,9 @@
 checkpoints/
 dust3r/
 data/
+ckpt/
+log/
+output/
 
 *.txt
 *.pt

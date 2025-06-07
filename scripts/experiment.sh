@@ -22,14 +22,14 @@ CKPT_DIR="ckpt"
 OUT_DIR="output"
 SCHE_DIR="schedule"
 
-mkdir -p "$LOG_DIR" "$CKPT_DIR/$EXP_NAME" "$OUT_DIR"
+mkdir -p "$LOG_DIR/$EXP_NAME/$FILENAME" "$CKPT_DIR/$EXP_NAME/$FILENAME" "$OUT_DIR"
 
 # 1) training
 python3 train.py \
   --lr "$LR" \
   --desc "$EXP_NAME" \
-  --log_path "$LOG_DIR/sdf_model_${EXP_NAME}_${FILENAME}.txt" \
-  --ckpt_path "$CKPT_DIR/$EXP_NAME/sdf_model_${EXP_NAME}_${FILENAME}" \
+  --log_path "$LOG_DIR/$EXP_NAME/$FILENAME/sdf_model_${EXP_NAME}_${FILENAME}.txt" \
+  --ckpt_path "$CKPT_DIR/$EXP_NAME/$FILENAME/sdf_model_${EXP_NAME}_${FILENAME}" \
   --file_name "$FILENAME" \
   --schedule_path "$SCHE_DIR/${SCHEDULE}.json" \
   --is_a100 "$IS_A100" 
