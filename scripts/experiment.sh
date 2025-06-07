@@ -22,7 +22,7 @@ CKPT_DIR="ckpt"
 OUT_DIR="output"
 SCHE_DIR="schedule"
 
-mkdir -p "$LOG_DIR/$EXP_NAME/$FILENAME" "$CKPT_DIR/$EXP_NAME/$FILENAME" "$OUT_DIR"
+mkdir -p "$LOG_DIR/$EXP_NAME/$FILENAME" "$CKPT_DIR/$EXP_NAME/$FILENAME" "$OUT_DIR/$EXP_NAME/$FILENAME"
 
 # 1) training
 python3 train.py \
@@ -38,9 +38,9 @@ echo -e "\033[32m[1/2] Finish Training\033[0m"
 
 # 2) inference
 python3 inference.py \
-  --res 300 \
-  --ckpt_path "$CKPT_DIR/$EXP_NAME/sdf_model_${EXP_NAME}_${FILENAME}_final.pt" \
-  --output_mesh "$OUT_DIR/sdf_model_${EXP_NAME}_${FILENAME}.ply" \
+  --res 256 \
+  --ckpt_path "$CKPT_DIR/$EXP_NAME/$FILENAME/sdf_model_${EXP_NAME}_${FILENAME}_final.pt" \
+  --output_mesh "$OUT_DIR/$EXP_NAME/$FILENAME/sdf_model_${EXP_NAME}_${FILENAME}_final.ply" \
   --file_name "$FILENAME"
 echo -e "\033[32m[2/2] Finish Inferencing\033[0m"
 
