@@ -23,39 +23,10 @@ def load_schedule(schedule_path):
 def get_stage_config(schedule, epoch):
     if epoch < schedule['coarse']['epochs']:
         return schedule['coarse']
-    else:
+    elif epoch < schedule["coarse"]["epochs"] + schedule["fine"]["epochs"]:
         return schedule['fine']
-
-def render_pointcloud(points: torch.Tensor,
-                      colors: torch.Tensor,
-                      cam_pose: torch.Tensor,
-                      K: torch.Tensor,
-                      image_size: tuple[int, int]
-                      ) -> tuple[torch.Tensor, torch.Tensor]:
-    device = points.device
-    H, W = image_size
-
-    n = points.shape[0]
-    pts_h = torch.cat([points, torch.ones(n, 1, device=device)], dim=1)  # (n,4)
-    cam_h = (cam_pose @ pts_h.T).T
-    Xc, Yc, Zc = cam_h[:, 0], cam_h[:, 1], cam_h[:, 2]
-
-    proj = (K @ cam_h[:, :3].T).T
-    u = (proj[:, 0] / proj[:, 2]).round().long()
-    v = (proj[:, 1] / proj[:, 2]).round().long()
-
-    valid = (Zc > 0) & (u >= 0) & (u < W) & (v >= 0) & (v < H)
-    u, v, Zc, cols = u[valid], v[valid], Zc[valid], colors[valid]
-
-    image = torch.ones((H, W, 3), device=device) * 0.0  # 全黑背景
-    depth = torch.full((H, W), 1e9, device=device)      # 大數字，避免被擋住
-
-    for xi, yi, zi, ci in zip(u, v, Zc, cols):
-        if zi < depth[yi, xi]:
-            depth[yi, xi] = zi
-            image[yi, xi] = ci
-
-    return image, depth
+    else:
+        return schedule['color']
 
 def str2bool(v):
     if isinstance(v, bool):
@@ -177,7 +148,13 @@ x = x.to(device)
 
 assert np.allclose(np.asarray(pcd.points), x[:, :3].cpu().numpy(), atol=1e-5), "!!!!Mismatch between x and normals!!!!"
 
-model = SDFNet(pe_freqs=schedule["fine"]["pe_freqs"]).to(device)
+max_pe_freqs = max(schedule["coarse"]["pe_freqs"],
+                   schedule["fine"]["pe_freqs"],
+                   schedule["color"]["pe_freqs"])
+
+print(f'max_pe_freqs: {max_pe_freqs}')
+
+model = SDFNet(pe_freqs=max_pe_freqs).to(device)
 model.scale = scale
 model.centre = centre
 # optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -250,6 +227,8 @@ for epoch in pbar:
     active_pe = pe_min + int((pe_max - pe_min) * min(epoch_in_stage / pe_ramp, 1.0))
     pe_mask = torch.zeros(model.pe_freqs, dtype=torch.bool)
     pe_mask[:active_pe] = True
+    # model.pe_freqs = active_pe.to(device)
+    # print(f'active_pe: {active_pe}')
     model.pe_mask = pe_mask.to(device)
 
     optimizer.zero_grad()
@@ -263,7 +242,13 @@ for epoch in pbar:
                                                                                                  K,
                                                                                                  cam_pose_0,
                                                                                                  gt_image,
-                                                                                                 is_a100)
+                                                                                                 is_a100,
+                                                                                                 weight_sdf,
+                                                                                                 weight_zero,
+                                                                                                 eik_init,
+                                                                                                 weight_normal,
+                                                                                                 weight_sparse,
+                                                                                                 weight_render)
 
     # -------------------weight setting--------------------
     w_eik = eik_init + (weight_eikonal_final - eik_init) * min(epoch / eik_ramp, 1.0)
@@ -297,9 +282,20 @@ for epoch in pbar:
                 {loss_render.item():.6f}, \
                 {current_lr:.8f}\n")
 
-# torch.save(model.state_dict(), ckpt_path)
+    if epoch % 100 == 0:
+        # torch.save(model.state_dict(), ckpt_path)
+        print(f'saving pe_freqs @ epoch {epoch}: {model.pe_freqs}')
+        torch.save({
+                "model_state_dict": model.state_dict(),
+                "pe_freqs": model.pe_freqs,
+                "view_pe_freqs": model.view_pe_freqs,
+                "use_sigmoid_rgb": model.use_sigmoid_rgb
+        }, f"{ckpt_path}_epoch{epoch}.pt")
+
 torch.save({
-    "model_state_dict": model.state_dict(),
-    "pe_freqs": pe_max
-}, ckpt_path)
+            "model_state_dict": model.state_dict(),
+            "pe_freqs": model.pe_freqs,
+            "view_pe_freqs": model.view_pe_freqs,
+            "use_sigmoid_rgb": model.use_sigmoid_rgb
+        }, f"{ckpt_path}_final.pt")
 print("Training finished.")

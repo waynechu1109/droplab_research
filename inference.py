@@ -11,40 +11,11 @@ import matplotlib.image as mpimg
 from PIL import Image
 import glob
 
+from utils import render_pointcloud
+
 hist_ = False
 slice = False
 render_verts = False
-
-def render_pointcloud(points: torch.Tensor,
-                      colors: torch.Tensor,
-                      cam_pose: torch.Tensor,
-                      K: torch.Tensor,
-                      image_size: tuple[int, int]
-                      ) -> tuple[torch.Tensor, torch.Tensor]:
-    device = points.device
-    H, W = image_size
-
-    n = points.shape[0]
-    pts_h = torch.cat([points, torch.ones(n, 1, device=device)], dim=1)  # (n,4)
-    cam_h = (cam_pose @ pts_h.T).T
-    Xc, Yc, Zc = cam_h[:, 0], cam_h[:, 1], cam_h[:, 2]
-
-    proj = (K @ cam_h[:, :3].T).T
-    u = (proj[:, 0] / proj[:, 2]).round().long()
-    v = (proj[:, 1] / proj[:, 2]).round().long()
-
-    valid = (Zc > 0) & (u >= 0) & (u < W) & (v >= 0) & (v < H)
-    u, v, Zc, cols = u[valid], v[valid], Zc[valid], colors[valid]
-
-    image = torch.ones((H, W, 3), device=device) * 0.0  # 全黑背景
-    depth = torch.full((H, W), 1e9, device=device)      # 大數字，避免被擋住
-
-    for xi, yi, zi, ci in zip(u, v, Zc, cols):
-        if zi < depth[yi, xi]:
-            depth[yi, xi] = zi
-            image[yi, xi] = ci
-
-    return image, depth
 
 def create_camera_frustum(intrinsic, extrinsic, width, height, scale=0.2):
     fx, fy = intrinsic.get_focal_length()
@@ -133,7 +104,14 @@ cam_origin = -R.T @ t
 checkpoint = torch.load(ckpt_path, map_location=device)
 if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
     pe_freqs = checkpoint.get("pe_freqs")
-    model = SDFNet(pe_freqs=pe_freqs).to(device)
+    # print(f'pe_freqs: {pe_freqs}')
+    view_pe_freqs = checkpoint.get("view_pe_freqs")
+    use_sigmoid_rgb = checkpoint.get("use_sigmoid_rgb")
+    model = SDFNet(
+        pe_freqs=pe_freqs,
+        view_pe_freqs=view_pe_freqs,
+        use_sigmoid_rgb=use_sigmoid_rgb
+    ).to(device)
     model.pe_mask = torch.ones(pe_freqs, dtype=torch.bool).to(device)
     model.load_state_dict(checkpoint["model_state_dict"])
     print(f"Model loaded successfully with pe_freqs = {pe_freqs}")

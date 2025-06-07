@@ -10,10 +10,8 @@ fi
 
 # exp. parameters 
 EXP_NAME=$1
-# EPOCHS=${2:-5000}
 LR=${2:-0.005}
-# SIGMA=${4:-0.01}
-FILEMANE=$3
+FILENAME=$3
 SCHEDULE=$4
 IS_A100=$5
 # PARAMETER=$6
@@ -24,15 +22,15 @@ CKPT_DIR="ckpt"
 OUT_DIR="output"
 SCHE_DIR="schedule"
 
-mkdir -p "$LOG_DIR" "$CKPT_DIR" "$OUT_DIR"
+mkdir -p "$LOG_DIR" "$CKPT_DIR/$EXP_NAME" "$OUT_DIR"
 
 # 1) training
 python3 train.py \
   --lr "$LR" \
   --desc "$EXP_NAME" \
-  --log_path "$LOG_DIR/sdf_model_${EXP_NAME}_${FILEMANE}.txt" \
-  --ckpt_path "$CKPT_DIR/sdf_model_${EXP_NAME}_${FILEMANE}.pt" \
-  --file_name "$FILEMANE" \
+  --log_path "$LOG_DIR/sdf_model_${EXP_NAME}_${FILENAME}.txt" \
+  --ckpt_path "$CKPT_DIR/$EXP_NAME/sdf_model_${EXP_NAME}_${FILENAME}" \
+  --file_name "$FILENAME" \
   --schedule_path "$SCHE_DIR/${SCHEDULE}.json" \
   --is_a100 "$IS_A100" 
   # --para "$PARAMETER"
@@ -41,9 +39,9 @@ echo -e "\033[32m[1/2] Finish Training\033[0m"
 # 2) inference
 python3 inference.py \
   --res 300 \
-  --ckpt_path "$CKPT_DIR/sdf_model_${EXP_NAME}_${FILEMANE}.pt" \
-  --output_mesh "$OUT_DIR/sdf_model_${EXP_NAME}_${FILEMANE}.ply" \
-  --file_name "$FILEMANE"
+  --ckpt_path "$CKPT_DIR/$EXP_NAME/sdf_model_${EXP_NAME}_${FILENAME}_final.pt" \
+  --output_mesh "$OUT_DIR/sdf_model_${EXP_NAME}_${FILENAME}.ply" \
+  --file_name "$FILENAME"
 echo -e "\033[32m[2/2] Finish Inferencing\033[0m"
 
 

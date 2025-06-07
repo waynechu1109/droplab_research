@@ -1,6 +1,7 @@
 import torch
 import torch.nn.functional as F
 from volume_render import volume_rendering
+import matplotlib.pyplot as plt
 
 def generate_rays(H, W, K, pose, device):
     i, j = torch.meshgrid(
@@ -42,15 +43,26 @@ def compute_render_color_loss(model, rays_o, rays_d, gt_image, cam_pose, K, imag
 
     u, v = u[valid], v[valid]
     rendered_color = rendered_color[valid].clamp(0, 1)  # 限制範圍
-    gt_rgb = gt_image[v, u]  # [N, 3]
+    gt_rgb = gt_image[v, u]  # [number of rays, 3]
+    # print(f"gt_rgb.shape: {gt_rgb.shape}")
 
     # render confidence mask（同樣是 [N, 1]）
-    render_conf = (gt_rgb.mean(dim=-1, keepdim=True) > 0.2).float()
+    # render_conf = (gt_rgb.mean(dim=-1, keepdim=True) > 0.2).float()
 
-    # L1 loss + mask
+    # mask
     # loss_render = F.l1_loss(rendered_color * render_conf, gt_rgb * render_conf)
-    loss_render = F.mse_loss(rendered_color * render_conf, gt_rgb * render_conf)
+    # loss_render = F.mse_loss(rendered_color * render_conf, gt_rgb * render_conf)
+    loss_render = F.mse_loss(rendered_color, gt_rgb)
 
+    # === Debug ===
+    print("Rendered color stats:", rendered_color.min().item(), rendered_color.max().item())
+    print("GT color stats:", gt_rgb.min().item(), gt_rgb.max().item())
+    print("Valid rays:", valid.sum().item())
+
+    full_img = torch.zeros((H, W, 3), device=rendered_color.device)
+    full_img[v, u] = rendered_color
+    full_img_np = full_img.detach().cpu().numpy().clip(0, 1)
+    plt.imsave("rendered_color_debug.png", full_img_np)
 
     return loss_render
 
@@ -77,20 +89,20 @@ def compute_sparse_loss(model, x, num_samples=10000, box_margin=0.1, tau=20.0):
 
     return sparse_loss
 
-def compute_color_consistency_loss(x, f_x, alpha=10.0, sample_size=1024):
-    N = x.shape[0]
-    idx = torch.randperm(N)[:sample_size]
-    x_sub = x[idx]  # [M,6]
-    f_sub = f_x[idx]  # [M]
-    rgb = x_sub[:, 3:]  # [M,3]
+# def compute_color_consistency_loss(x, f_x, alpha=10.0, sample_size=1024):
+#     N = x.shape[0]
+#     idx = torch.randperm(N)[:sample_size]
+#     x_sub = x[idx]  # [M,6]
+#     f_sub = f_x[idx]  # [M]
+#     rgb = x_sub[:, 3:]  # [M,3]
 
-    diff = rgb.unsqueeze(1) - rgb.unsqueeze(0)  # [M,M,3]
-    color_dist2 = (diff ** 2).sum(-1)  # [M,M]
-    w = torch.exp(-alpha * color_dist2)
+#     diff = rgb.unsqueeze(1) - rgb.unsqueeze(0)  # [M,M,3]
+#     color_dist2 = (diff ** 2).sum(-1)  # [M,M]
+#     w = torch.exp(-alpha * color_dist2)
 
-    sdf_diff2 = (f_sub.unsqueeze(1) - f_sub.unsqueeze(0)) ** 2  # [M,M]
-    loss = (w * sdf_diff2).mean()
-    return 100 * loss
+#     sdf_diff2 = (f_sub.unsqueeze(1) - f_sub.unsqueeze(0)) ** 2  # [M,M]
+#     loss = (w * sdf_diff2).mean()
+#     return 100 * loss
 
 def compute_normal_loss(model, x, normals, batch_size=8192):
     N = x.shape[0]
@@ -128,70 +140,107 @@ def compute_normal_loss(model, x, normals, batch_size=8192):
     return total_loss / N
 
 # total loss calculation
-def compute_loss(model, x, x_noisy_full, epsilon, normals, H, W, K, cam_pose, gt_image, is_a100):
+def compute_loss(model, 
+                    x, 
+                    x_noisy_full, 
+                    epsilon, 
+                    normals, 
+                    H, 
+                    W, 
+                    K, 
+                    cam_pose, 
+                    gt_image, 
+                    is_a100, 
+                    weight_sdf,
+                    weight_zero,
+                    eik_init,
+                    weight_normal,
+                    weight_sparse,
+                    weight_render):
     x.requires_grad_(True)
     f_x, _ = model(x, return_rgb=False)
     f_x_noisy, _ = model(x_noisy_full, return_rgb=False)
 
     # Part 1: MSE between predicted SDF at xⁿ and actual |ε|
-    # true_dist = epsilon.norm(dim=1)
-    # loss_sdf = F.mse_loss(f_x_noisy, true_dist)
-    normals = torch.tensor(normals, dtype=torch.float32, device=x.device)
-    signed_dist = torch.sum(epsilon * normals, dim=1)
-    loss_sdf = F.mse_loss(f_x_noisy, signed_dist)
+    if weight_sdf > 0.0:
+        # true_dist = epsilon.norm(dim=1)
+        # loss_sdf = F.mse_loss(f_x_noisy, true_dist)
+        normals = torch.tensor(normals, dtype=torch.float32, device=x.device)
+        signed_dist = torch.sum(epsilon * normals, dim=1)
+        loss_sdf = F.mse_loss(f_x_noisy, signed_dist)
+    else:
+        loss_sdf = torch.tensor(0.0, device=x.device)
 
     # Part 2: Zero loss: ||f(x, c)||
-    loss_zero = f_x.abs().mean()
+    if weight_zero > 0.0:
+        loss_zero = f_x.abs().mean()
+    else:
+        loss_zero = torch.tensor(0.0, device=x.device)
 
     # Part 3: Eikonal: ||∇f(x^n, c) - 1||
-    x_noisy_full.requires_grad_(True) # enable partial differentiation
-    # x.requires_grad_()
-    f_pred, _ = model(x_noisy_full, return_rgb=False)
-    grads = torch.autograd.grad(
-        outputs=f_pred,       # f(xⁿ, c)
-        # inputs=x,  # input with 6 dimensions: [x, y, z, r, g, b]
-        inputs=x_noisy_full,
-        grad_outputs=torch.ones_like(f_pred),
-        create_graph=True,
-        retain_graph=True,
-        only_inputs=True
-    )[0][:, :3]  # take the gradieant w.r.t. (x, y, z)
+    if eik_init > 0.0:
+        x_noisy_full.requires_grad_(True) # enable partial differentiation
+        # x.requires_grad_()
+        f_pred, _ = model(x_noisy_full, return_rgb=False)
+        grads = torch.autograd.grad(
+            outputs=f_pred,       # f(xⁿ, c)
+            # inputs=x,  # input with 6 dimensions: [x, y, z, r, g, b]
+            inputs=x_noisy_full,
+            grad_outputs=torch.ones_like(f_pred),
+            create_graph=True,
+            retain_graph=True,
+            only_inputs=True
+        )[0][:, :3]  # take the gradieant w.r.t. (x, y, z)
 
-    grad_norm = torch.norm(grads, dim=-1)
+        grad_norm = torch.norm(grads, dim=-1)
 
-    # narrow band mask: 只在靠近表面的位置計算 eikonal loss
-    sdf_abs = torch.abs(f_pred.detach().squeeze(-1))  # detach 避免回傳梯度
-    mask = sdf_abs < 0.2  # threshold 可調整：0.05～0.2 之間都可嘗試
-    if mask.any():
-        loss_eikonal = ((grad_norm[mask] - 1) ** 2).mean()
+        # narrow band mask: 只在靠近表面的位置計算 eikonal loss
+        sdf_abs = torch.abs(f_pred.detach().squeeze(-1))  # detach 避免回傳梯度
+        mask = sdf_abs < 0.2  # threshold 可調整：0.05～0.2 之間都可嘗試
+        if mask.any():
+            loss_eikonal = ((grad_norm[mask] - 1) ** 2).mean()
+        else:
+            loss_eikonal = torch.tensor(0.0, device=f_pred.device)
     else:
-        loss_eikonal = torch.tensor(0.0, device=f_pred.device)
+        loss_eikonal = torch.tensor(0.0, device=x.device)
 
     # Part 5: Normal loss
-    if not isinstance(normals, torch.Tensor):
-        normals = torch.tensor(normals, dtype=torch.float32, device=x.device)
+    if weight_normal > 0.0:
+        if not isinstance(normals, torch.Tensor):
+            normals = torch.tensor(normals, dtype=torch.float32, device=x.device)
+        else:
+            normals = normals.clone().detach().to(dtype=torch.float32, device=x.device)
+        loss_normal = compute_normal_loss(model, x, normals, batch_size=50000)
     else:
-        normals = normals.clone().detach().to(dtype=torch.float32, device=x.device)
-    loss_normal = compute_normal_loss(model, x, normals, batch_size=50000)
+        loss_normal = torch.tensor(0.0, device=x.device)
+
 
     # Part 6: Color Consistency loss
     # loss_consistency = compute_color_consistency_loss(x, f_x, alpha=20.0, sample_size=2048)
 
     # Part 7: Sparse loss
-    if is_a100:
-        loss_sparse = compute_sparse_loss(model, x, num_samples=100000)
+    if weight_sparse > 0.0:
+        if is_a100:
+            loss_sparse = compute_sparse_loss(model, x, num_samples=100000)
+        else:
+            loss_sparse = compute_sparse_loss(model, x, num_samples=7500)
     else:
-        loss_sparse = compute_sparse_loss(model, x, num_samples=7500)
+        loss_sparse = torch.tensor(0.0, device=x.device)
 
     # Part 8: Color render loss
-    rays_o, rays_d = generate_rays(H, W, K, cam_pose, x.device)
     # 隨機取 subset
-    if is_a100:
-        max_rays = 8192
+    if weight_render > 0.0:
+        if is_a100:
+            max_rays = 8192
+        else:
+            max_rays = 256
+        rays_o, rays_d = generate_rays(H, W, K, cam_pose, x.device)
+        perm = torch.randperm(rays_o.shape[0], device=rays_o.device)[:max_rays]
+        rays_o, rays_d = rays_o[perm], rays_d[perm]
+        loss_render = compute_render_color_loss(
+            model, rays_o, rays_d, gt_image, cam_pose, K, (H, W)
+        )
     else:
-        max_rays = 256
-    perm = torch.randperm(rays_o.shape[0], device=rays_o.device)[:max_rays]
-    rays_o, rays_d = rays_o[perm], rays_d[perm]
-    loss_render = compute_render_color_loss(model, rays_o, rays_d, gt_image, cam_pose, K, (H, W))
+        loss_render = torch.tensor(0.0, device=x.device)
     
     return loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_sparse, loss_render

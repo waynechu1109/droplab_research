@@ -5,13 +5,13 @@ from torch.nn.utils import weight_norm
 
 class SDFNet(nn.Module):
     def __init__(self,
-                 pe_freqs: int = 6,
-                 hidden_dim: int = 256,
-                 num_layers: int = 8,
-                 skip_connection_at: int = 4,
-                 use_viewdirs: bool = True,
-                 view_pe_freqs: int = 4,
-                 use_sigmoid_rgb: bool = False):
+                 pe_freqs,
+                 hidden_dim=256,
+                 num_layers=8,
+                 skip_connection_at=4,
+                 use_viewdirs=True,
+                 view_pe_freqs=4,
+                 use_sigmoid_rgb=True):
         super().__init__()
         self.pe_freqs = pe_freqs
         self.hidden_dim = hidden_dim
@@ -21,12 +21,12 @@ class SDFNet(nn.Module):
         self.view_pe_freqs = view_pe_freqs
         self.use_sigmoid_rgb = use_sigmoid_rgb
 
-        self.pe_mask = torch.ones(self.pe_freqs, dtype=torch.bool)
+        self.register_buffer("pe_mask", torch.ones(self.pe_freqs, dtype=torch.bool))
 
-        self.pe_dim = 3 + 2 * pe_freqs * 3  # for xyz
+        self.pe_dim = 3 + 2 * pe_freqs * 3  # xyz after PE
         self.input_dim = self.pe_dim
 
-        # === Geometry backbone ===
+        # === Geometry branch ===
         layers = []
         for i in range(num_layers):
             in_dim = self.input_dim if i == 0 else hidden_dim
@@ -39,10 +39,10 @@ class SDFNet(nn.Module):
         self.layers = nn.ModuleList(layers)
         self.sdf_out = nn.Linear(hidden_dim, 1)
 
-        # === RGB head ===
+        # === RGB branch ===
         view_dim = 0
         if use_viewdirs:
-            view_dim = 3 + 3 * 2 * view_pe_freqs  # original + sin/cos encoded
+            view_dim = 3 + 2 * view_pe_freqs * 3
 
         self.rgb_head = nn.Sequential(
             nn.LayerNorm(hidden_dim + view_dim),
@@ -71,7 +71,6 @@ class SDFNet(nn.Module):
         return torch.cat(enc, dim=-1)
 
     def view_enc(self, d: torch.Tensor) -> torch.Tensor:
-        """Encode viewing directions (if enabled)"""
         if self.view_pe_freqs == 0:
             return d
         out = [d]
@@ -84,8 +83,8 @@ class SDFNet(nn.Module):
     def forward(self, x: torch.Tensor, view_dirs: torch.Tensor = None, return_rgb=True):
         """
         Args:
-            x: [N, 3]
-            view_dirs: [N, 3]
+            x: [N, 3] points
+            view_dirs: [N, 3] (optional)
         Returns:
             sdf: [N], rgb_pred: [N, 3] (or None)
         """
@@ -101,13 +100,12 @@ class SDFNet(nn.Module):
         if not return_rgb:
             return sdf, None
 
-        # === RGB forward path ===
         if self.use_viewdirs:
-            assert view_dirs is not None
-            view_enc = self.view_enc(view_dirs)
-            h_rgb = torch.cat([h, view_enc], dim=-1)
+            assert view_dirs is not None, "view_dirs required for RGB prediction"
+            view_pe = self.view_enc(view_dirs)
+            h_rgb = torch.cat([h, view_pe], dim=-1)
         else:
             h_rgb = h
 
-        rgb_pred = self.rgb_head(h_rgb)  # sigmoid (0-1) or linear
+        rgb_pred = self.rgb_head(h_rgb)
         return sdf, rgb_pred
