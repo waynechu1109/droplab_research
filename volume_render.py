@@ -27,7 +27,9 @@ def volume_rendering(model, rays_o, rays_d, view_dirs=None, K=None, pose=None, i
 
     # Step 3: Input to model (points, view dirs)
     if view_dirs_flat is not None:
-        sdf, pred_rgb = model(points_flat, view_dirs=view_dirs_flat)
+        # sdf, pred_rgb = model(points_flat, view_dirs=view_dirs_flat)
+        sdf, pred_rgb = model(points_flat, view_dirs_flat, return_rgb=True, detach_sdf=True)
+
     else:
         sdf, pred_rgb = model(points_flat)
 

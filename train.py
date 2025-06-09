@@ -10,6 +10,7 @@ from model import SDFNet
 from loss import compute_loss
 import matplotlib.pyplot as plt
 import torchvision.transforms as T
+from copy import deepcopy
 
 from torch.optim.lr_scheduler import LambdaLR
 from torch.optim.lr_scheduler import MultiStepLR
@@ -209,9 +210,11 @@ for epoch in pbar:
     elif stage_cfg is schedule["color"]:
         epoch_in_stage = epoch - schedule["fine"]["epochs"] - schedule["coarse"]["epochs"]
         pe_min = schedule["fine"]["pe_freqs"]
+
+
+    if stage_cfg is schedule["color"]:
         for name, param in model.named_parameters():
-            if "rgb_head" not in name:
-                param.requires_grad = False
+            param.requires_grad = "rgb_head" in name
 
 
     # generate point with noises (Sampling)
@@ -232,23 +235,71 @@ for epoch in pbar:
     model.pe_mask = pe_mask.to(device)
 
     optimizer.zero_grad()
-    loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_sparse, loss_render = compute_loss(model, 
-                                                                                                 x, 
-                                                                                                 x_noisy_full, 
-                                                                                                 epsilon, 
-                                                                                                 normals,
-                                                                                                 H,
-                                                                                                 W,
-                                                                                                 K,
-                                                                                                 cam_pose_0,
-                                                                                                 gt_image,
-                                                                                                 is_a100,
-                                                                                                 weight_sdf,
-                                                                                                 weight_zero,
-                                                                                                 eik_init,
-                                                                                                 weight_normal,
-                                                                                                 weight_sparse,
-                                                                                                 weight_render)
+    if stage_cfg is not schedule["color"]:
+        # 非 color 階段：正常計算所有 loss 並訓練
+        loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_sparse, loss_render = compute_loss(
+            model,
+            x,
+            x_noisy_full,
+            epsilon,
+            normals,
+            H,
+            W,
+            K,
+            cam_pose_0,
+            gt_image,
+            is_a100,
+            weight_sdf,
+            weight_zero,
+            eik_init,
+            weight_normal,
+            weight_sparse,
+            weight_render  # 不需要 render loss
+        )
+    else:
+        # === Color Stage ===
+        # 1. 評估 geometry losses（但不參與 backward）
+        with torch.no_grad():
+            loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_sparse, _ = compute_loss(
+                model,
+                x,
+                x_noisy_full,
+                epsilon,
+                normals,
+                H,
+                W,
+                K,
+                cam_pose_0,
+                gt_image,
+                is_a100,
+                weight_sdf,
+                weight_zero,
+                eik_init,
+                weight_normal,
+                weight_sparse,
+                0.0  # 不需要 render loss
+            )
+
+        # 2. 計算 render loss，並且 backward（唯一訓練信號）
+        _, _, _, _, _, loss_render = compute_loss(
+            model,
+            x,
+            x_noisy_full,
+            epsilon,
+            normals,
+            H,
+            W,
+            K,
+            cam_pose_0,
+            gt_image,
+            is_a100,
+            weight_sdf,
+            weight_zero,
+            eik_init,
+            weight_normal,
+            weight_sparse,
+            weight_render
+        )
 
     # -------------------weight setting--------------------
     w_eik = eik_init + (weight_eikonal_final - eik_init) * min(epoch / eik_ramp, 1.0)
@@ -282,20 +333,23 @@ for epoch in pbar:
                 {loss_render.item():.6f}, \
                 {current_lr:.8f}\n")
 
-    if epoch % 100 == 0:
-        # torch.save(model.state_dict(), ckpt_path)
+    if epoch % 500 == 0 and epoch >= 1000:
         print(f'saving pe_freqs @ epoch {epoch}: {model.pe_freqs}')
         torch.save({
                 "model_state_dict": model.state_dict(),
                 "pe_freqs": model.pe_freqs,
                 "view_pe_freqs": model.view_pe_freqs,
-                "use_sigmoid_rgb": model.use_sigmoid_rgb
+                "use_tanh_rgb": model.use_tanh_rgb,
+                "use_feature_vector": model.use_feature_vector,
+                "feature_vector_size": model.feature_vector_size
         }, f"{ckpt_path}_epoch{epoch}.pt")
 
 torch.save({
             "model_state_dict": model.state_dict(),
             "pe_freqs": model.pe_freqs,
             "view_pe_freqs": model.view_pe_freqs,
-            "use_sigmoid_rgb": model.use_sigmoid_rgb
+            "use_tanh_rgb": model.use_tanh_rgb,
+            "use_feature_vector": model.use_feature_vector,
+            "feature_vector_size": model.feature_vector_size
         }, f"{ckpt_path}_final.pt")
 print("Training finished.")

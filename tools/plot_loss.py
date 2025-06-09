@@ -4,6 +4,8 @@ import argparse
 import os
 import time
 
+dynamic = False
+
 parser = argparse.ArgumentParser(description="Plot loss curves from log file.")
 parser.add_argument("--log", type=str, required=True, help="Path to the log file (CSV format)")
 args = parser.parse_args()
@@ -54,9 +56,14 @@ try:
         ax2.legend()
 
         plt.tight_layout()
-        plt.show(block=False)  # 不阻斷程式執行
-        plt.pause(0.1)         # 顯示圖形
-        time.sleep(10)         # 等待 10 秒
+        
+        if dynamic:
+            plt.show(block=False)  # 不阻斷程式執行
+            plt.pause(0.1)         # 顯示圖形
+            time.sleep(60)         # 等待 60 秒
+        else:
+            plt.show()
+            
 except KeyboardInterrupt:
     print("\nEnd plotting.")
 

@@ -106,11 +106,15 @@ if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
     pe_freqs = checkpoint.get("pe_freqs")
     # print(f'pe_freqs: {pe_freqs}')
     view_pe_freqs = checkpoint.get("view_pe_freqs")
-    use_sigmoid_rgb = checkpoint.get("use_sigmoid_rgb")
+    use_tanh_rgb = checkpoint.get("use_tanh_rgb")
+    use_feature_vector = checkpoint.get("use_feature_vector")
+    feature_vector_size = checkpoint.get("feature_vector_size")
     model = SDFNet(
         pe_freqs=pe_freqs,
         view_pe_freqs=view_pe_freqs,
-        use_sigmoid_rgb=use_sigmoid_rgb
+        use_tanh_rgb=use_tanh_rgb,
+        use_feature_vector=use_feature_vector,
+        feature_vector_size=feature_vector_size
     ).to(device)
     model.pe_mask = torch.ones(pe_freqs, dtype=torch.bool).to(device)
     model.load_state_dict(checkpoint["model_state_dict"])
@@ -163,8 +167,8 @@ if np.min(sdf_grid) >= 0 or np.max(sdf_grid) <= 0:
 spacing_val = x_vals[1] - x_vals[0]
 spacing = (z_vals[1] - z_vals[0], y_vals[1] - y_vals[0], x_vals[1] - x_vals[0])
 
-sdf_grid[np.abs(sdf_grid) > 0.1] = 1
-# thresh = np.percentile(np.abs(sdf_pred), 95.0)  # 只排除極端值
+sdf_grid[np.abs(sdf_grid) > 0.2] = 1
+# thresh = np.percentile(np.abs(sdf_pred), 99.9999999)  # 只排除極端值
 # sdf_grid[np.abs(sdf_grid) > thresh] = 1
 # sdf_grid = np.clip(sdf_grid, -3.0, 3.0)
 

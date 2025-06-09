@@ -229,7 +229,9 @@ def compute_loss(model,
 
     # Part 8: Color render loss
     # 隨機取 subset
-    if weight_render > 0.0:
+    if weight_render == 0.0:
+        loss_render = torch.tensor(0.0, device=x.device)
+    else:
         if is_a100:
             max_rays = 8192
         else:
@@ -239,8 +241,6 @@ def compute_loss(model,
         rays_o, rays_d = rays_o[perm], rays_d[perm]
         loss_render = compute_render_color_loss(
             model, rays_o, rays_d, gt_image, cam_pose, K, (H, W)
-        )
-    else:
-        loss_render = torch.tensor(0.0, device=x.device)
+        )        
     
     return loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_sparse, loss_render

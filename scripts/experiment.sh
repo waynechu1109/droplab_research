@@ -37,12 +37,13 @@ python3 train.py \
 echo -e "\033[32m[1/2] Finish Training\033[0m"
 
 # 2) inference
-python3 inference.py \
-  --res 256 \
-  --ckpt_path "$CKPT_DIR/$EXP_NAME/$FILENAME/sdf_model_${EXP_NAME}_${FILENAME}_final.pt" \
-  --output_mesh "$OUT_DIR/$EXP_NAME/$FILENAME/sdf_model_${EXP_NAME}_${FILENAME}_final.ply" \
-  --file_name "$FILENAME"
-echo -e "\033[32m[2/2] Finish Inferencing\033[0m"
+epochs=("epoch2000" "epoch2500" "final")
 
-
-# ./experiment.sh NeuS_pe6_beta100_4.2_.5_.01to.05_[]_.05_1_adamw_cosAnn_narrow_band_msk0.05 2500 0.005 0.01
+for epoch in "${epochs[@]}"; do
+  python3 inference.py \
+    --res 128 \
+    --ckpt_path "$CKPT_DIR/$EXP_NAME/$FILENAME/sdf_model_${EXP_NAME}_${FILENAME}_${epoch}.pt" \
+    --output_mesh "$OUT_DIR/$EXP_NAME/$FILENAME/sdf_model_${EXP_NAME}_${FILENAME}_${epoch}.ply" \
+    --file_name "$FILENAME"
+  echo -e "\033[32m[2/2] Finish Inferencing ${FILENAME} ${epoch}\033[0m"
+done
