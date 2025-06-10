@@ -53,6 +53,7 @@ try:
         ax2.set_ylabel("LR")
         ax2.set_title("Learning Rate Schedule")
         ax2.grid(True)
+        ax2.set_yscale("log")
         ax2.legend()
 
         plt.tight_layout()

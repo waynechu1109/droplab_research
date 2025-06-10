@@ -28,6 +28,7 @@ class SDFNet(nn.Module):
         self.register_buffer("pe_mask", torch.ones(self.pe_freqs, dtype=torch.bool))
         self.pe_dim = 3 + 2 * pe_freqs * 3  # PE applied to xyz
         self.input_dim = self.pe_dim
+        self.rgb_input_dim = 0
 
         # Geometry branch
         layers = []
@@ -46,15 +47,11 @@ class SDFNet(nn.Module):
             self.feature_out = nn.Linear(hidden_dim, feature_vector_size)
 
         # RGB branch
-        view_dim = 0
-        if use_viewdirs:
-            view_dim = 3 + 2 * view_pe_freqs * 3
-        rgb_input_dim = hidden_dim + view_dim
-        if use_feature_vector:
-            rgb_input_dim += feature_vector_size
+        self.rgb_input_dim = 6 + feature_vector_size + hidden_dim + (3 if not use_viewdirs else (3 + 2 * view_pe_freqs * 3))
+
         self.rgb_head = nn.Sequential(
-            nn.LayerNorm(rgb_input_dim),
-            nn.Linear(rgb_input_dim, hidden_dim),
+            nn.LayerNorm(self.rgb_input_dim),
+            nn.Linear(self.rgb_input_dim, hidden_dim),
             nn.ReLU(inplace=True),
             nn.Dropout(0.1),
             nn.Linear(hidden_dim, hidden_dim),
@@ -65,6 +62,20 @@ class SDFNet(nn.Module):
             nn.Linear(hidden_dim // 2, 3),
             nn.Tanh() if use_tanh_rgb else nn.Sigmoid()
         )
+
+    def gradient(self, x):
+        x.requires_grad_(True)
+        sdf, _ = self.forward(x, return_rgb=False)
+        d_output = torch.ones_like(sdf, requires_grad=False, device=sdf.device)
+        gradients = torch.autograd.grad(
+            outputs=sdf,
+            inputs=x,
+            grad_outputs=d_output,
+            create_graph=True,
+            retain_graph=True,
+            only_inputs=True
+        )[0]
+        return gradients.unsqueeze(1)  # [N, 1, 3]
 
     def pos_enc(self, x):
         enc = [x]
@@ -88,7 +99,7 @@ class SDFNet(nn.Module):
             out.append(torch.cos(freq * d))
         return torch.cat(out, dim=-1)
 
-    def forward(self, x, view_dirs=None, return_rgb=True, detach_sdf=False):
+    def forward(self, x, view_dirs=None, return_rgb=True, detach_sdf=False, compute_grad=False):
         pe = self.pos_enc(x)
         h = pe
         for i in range(self.num_layers):
@@ -112,9 +123,13 @@ class SDFNet(nn.Module):
         if self.use_viewdirs:
             assert view_dirs is not None, "view_dirs required for RGB prediction"
             view_pe = self.view_enc(view_dirs)
-            rgb_input = torch.cat([feat, view_pe, h_rgb], dim=-1)
+            normals = torch.zeros_like(x)  # safe default
+            if compute_grad:
+                x.requires_grad_(True)
+                normals = self.gradient(x)[:, 0, :].detach()
+            rgb_input = torch.cat([x, normals, feat, view_pe, h_rgb], dim=-1)
         else:
-            rgb_input = torch.cat([feat, h_rgb], dim=-1)
+            rgb_input = torch.cat([x, normals, feat, h_rgb], dim=-1)
 
         rgb = self.rgb_head(rgb_input)
         if self.use_tanh_rgb:

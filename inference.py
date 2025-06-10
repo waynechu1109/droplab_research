@@ -138,14 +138,12 @@ points = np.stack([grid_x, grid_y, grid_z], axis=-1).reshape(-1, 3)
 def batched_query(model, query_np, cam_origin, batch_size=32768):
     out = []
     cam_origin_tensor = torch.tensor(cam_origin, dtype=torch.float32, device=device).unsqueeze(0)
-    with torch.no_grad():
-        for i in range(0, len(query_np), batch_size):
-            batch = torch.tensor(query_np[i:i+batch_size], dtype=torch.float32).to(device)
-            # view_dirs = cam_origin_tensor - batch
-            view_dirs = batch - cam_origin_tensor
-            view_dirs = view_dirs / torch.norm(view_dirs, dim=-1, keepdim=True)
-            sdf, _ = model(batch, view_dirs=view_dirs)
-            out.append(sdf.cpu().numpy())
+    for i in range(0, len(query_np), batch_size):
+        batch = torch.tensor(query_np[i:i+batch_size], dtype=torch.float32, device=device, requires_grad=True)
+        view_dirs = batch - cam_origin_tensor
+        view_dirs = view_dirs / torch.norm(view_dirs, dim=-1, keepdim=True)
+        sdf, _ = model(batch, view_dirs=view_dirs)
+        out.append(sdf.detach().cpu().numpy())  # detach here to avoid graph memory
     return np.concatenate(out, axis=0)
 
 sdf_pred = batched_query(model, points, cam_origin)
@@ -183,7 +181,7 @@ view_dirs = verts_tensor - cam_origin_tensor
 view_dirs = view_dirs / torch.norm(view_dirs, dim=-1, keepdim=True)
 
 with torch.no_grad():
-    _, rgb_pred = model(verts_tensor, view_dirs=view_dirs)
+    _, rgb_pred = model(verts_tensor, view_dirs=view_dirs, compute_grad=False)
     rgb_np = (rgb_pred.clamp(0, 1).cpu().numpy() * 255).astype(np.uint8)
 
 mesh_o3d = o3d.geometry.TriangleMesh()

@@ -166,11 +166,19 @@ optimizer = torch.optim.AdamW(
 )
 
 # lr_tune
-scheduler = CosineAnnealingLR(
+# scheduler = CosineAnnealingLR(
+#     optimizer,
+#     T_max=total_epochs,      
+#     eta_min=1e-5             # lowest lr
+# )
+
+# 初始 scheduler（非 color 階段）
+scheduler_1 = CosineAnnealingLR(
     optimizer,
-    T_max=total_epochs,      
-    eta_min=1e-5             # lowest lr
+    T_max=schedule["coarse"]["epochs"] + schedule["fine"]["epochs"],
+    eta_min=1e-5
 )
+scheduler_2 = None  # 預設為 None，color 階段才會建立
 
 # training
 model.train()
@@ -215,6 +223,17 @@ for epoch in pbar:
     if stage_cfg is schedule["color"]:
         for name, param in model.named_parameters():
             param.requires_grad = "rgb_head" in name
+
+    # print(f'max. lr: {lr}')
+    if stage_cfg is schedule["color"] and scheduler_2 is None:
+        print(f"Switching to second CosineAnnealingLR scheduler for color stage, lr={lr}")
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = 1e-2*lr
+        scheduler_2 = CosineAnnealingLR(
+            optimizer,
+            T_max=schedule["color"]["epochs"],
+            eta_min=1e-2*1e-5
+        )
 
 
     # generate point with noises (Sampling)
@@ -313,7 +332,11 @@ for epoch in pbar:
     loss_total.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) # clip norm
     optimizer.step() # update model's parameters
-    scheduler.step() # update lr
+    # scheduler.step() # update lr
+    if scheduler_2 is not None:
+        scheduler_2.step()
+    else:
+        scheduler_1.step()
 
     pbar.set_postfix(
         loss=loss_total.item(),

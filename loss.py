@@ -141,22 +141,23 @@ def compute_normal_loss(model, x, normals, batch_size=8192):
 
 # total loss calculation
 def compute_loss(model, 
-                    x, 
-                    x_noisy_full, 
-                    epsilon, 
-                    normals, 
-                    H, 
-                    W, 
-                    K, 
-                    cam_pose, 
-                    gt_image, 
-                    is_a100, 
-                    weight_sdf,
-                    weight_zero,
-                    eik_init,
-                    weight_normal,
-                    weight_sparse,
-                    weight_render):
+        x, 
+        x_noisy_full, 
+        epsilon, 
+        normals, 
+        H, 
+        W, 
+        K, 
+        cam_pose, 
+        gt_image, 
+        is_a100, 
+        weight_sdf,
+        weight_zero,
+        eik_init,
+        weight_normal,
+        weight_sparse,
+        weight_render
+    ):
     x.requires_grad_(True)
     f_x, _ = model(x, return_rgb=False)
     f_x_noisy, _ = model(x_noisy_full, return_rgb=False)

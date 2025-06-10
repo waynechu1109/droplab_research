@@ -1,5 +1,5 @@
 {
-    "total_epochs": 2800,
+    "total_epochs": 2500,
     "coarse": {
         "epochs": 800,
         "sigma": 0.003,
@@ -20,7 +20,7 @@
         }
     },
     "fine": {
-        "epochs": 1200,
+        "epochs": 900,
         "sigma": 0.005,
         "pe_freqs": 8,
         "pe_ramp": 480,
@@ -40,7 +40,7 @@
     },
     "color": {
         "epochs": 800,
-        "sigma": 0.002,
+        "sigma": 1e-8,
         "pe_freqs": 8,
         "pe_ramp": 320,
         "loss_weights": {
