@@ -165,7 +165,7 @@ if np.min(sdf_grid) >= 0 or np.max(sdf_grid) <= 0:
 spacing_val = x_vals[1] - x_vals[0]
 spacing = (z_vals[1] - z_vals[0], y_vals[1] - y_vals[0], x_vals[1] - x_vals[0])
 
-sdf_grid[np.abs(sdf_grid) > 0.2] = 1
+sdf_grid[np.abs(sdf_grid) > 0.1] = 1
 # thresh = np.percentile(np.abs(sdf_pred), 99.9999999)  # 只排除極端值
 # sdf_grid[np.abs(sdf_grid) > thresh] = 1
 # sdf_grid = np.clip(sdf_grid, -3.0, 3.0)

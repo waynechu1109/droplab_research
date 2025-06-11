@@ -10,10 +10,10 @@ class SDFNet(nn.Module):
                  num_layers=8,
                  skip_connection_at=4,
                  use_viewdirs=True,
-                 view_pe_freqs=4,
+                 view_pe_freqs=6,
                  use_tanh_rgb=True,
                  use_feature_vector=True,
-                 feature_vector_size=32):
+                 feature_vector_size=64):
         super().__init__()
         self.pe_freqs = pe_freqs
         self.hidden_dim = hidden_dim
@@ -120,10 +120,10 @@ class SDFNet(nn.Module):
         else:
             feat = h_rgb
 
+        normals = torch.zeros_like(x)  # safe default
         if self.use_viewdirs:
             assert view_dirs is not None, "view_dirs required for RGB prediction"
             view_pe = self.view_enc(view_dirs)
-            normals = torch.zeros_like(x)  # safe default
             if compute_grad:
                 x.requires_grad_(True)
                 normals = self.gradient(x)[:, 0, :].detach()
