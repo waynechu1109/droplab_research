@@ -17,6 +17,20 @@ import glob
 
 VIS = False
 
+def contrast_enhance(colors):
+    # colors: [N, 3], assumed in [0,255]
+    colors = colors.astype(np.float32) / 255.0  # 先轉到 [0,1]
+    
+    # 拉伸每個 channel 的對比
+    p_low, p_high = 1, 99  # 去除極端值
+    out = []
+    for c in range(3):
+        vmin = np.percentile(colors[:, c], p_low)
+        vmax = np.percentile(colors[:, c], p_high)
+        stretched = np.clip((colors[:, c] - vmin) / (vmax - vmin + 1e-8), 0, 1)
+        out.append(stretched)
+    return np.stack(out, axis=1)
+
 def save_colored_ply(filename, points, colors):
     with open(filename, 'w') as f:
         f.write("ply\nformat ascii 1.0\n")
@@ -141,6 +155,9 @@ if __name__ == '__main__':
     # combined to a single array
     all_pts3d = np.concatenate(all_pts3d, axis=0)
     all_colors = np.concatenate(all_colors, axis=0)
+    
+    # contrast enhance
+    # all_colors = contrast_enhance(all_colors)
 
     # normalize to [-1, 1]
     mins = all_pts3d.min(axis=0)
@@ -161,6 +178,7 @@ if __name__ == '__main__':
     # Voxel Grid Down Sampling
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(all_pts3d)
+    # pcd.colors = o3d.utility.Vector3dVector(all_colors.astype(float))
     pcd.colors = o3d.utility.Vector3dVector(all_colors.astype(float) / 255.0)
 
     # 先下採樣

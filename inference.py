@@ -10,12 +10,34 @@ import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 from PIL import Image
 import glob
+from scipy.spatial import cKDTree
+from scipy.ndimage import gaussian_filter
 
-from utils import render_pointcloud
+from utils import render_pointcloud, str2bool
 
 hist_ = False
 slice = False
 render_verts = False
+
+def find_zero_crossing_rgb(model, xyz, rgb_candidates, device, threshold=0.01):
+    # xyz: (N, 3)
+    # rgb_candidates: (K, 3), 建議可設定如np.linspace(0, 1, 16)三軸組合
+    N = xyz.shape[0]
+    K = rgb_candidates.shape[0]
+    xyz_tiled = np.repeat(xyz, K, axis=0)  # [N*K, 3]
+    rgb_tiled = np.tile(rgb_candidates, (N, 1))  # [N*K, 3]
+    query_6d = np.concatenate([xyz_tiled, rgb_tiled], axis=1)
+    with torch.no_grad():
+        batch = torch.tensor(query_6d, dtype=torch.float32, device=device)
+        sdf_vals = model(batch)
+        sdf_vals = sdf_vals.cpu().numpy().reshape(N, K)
+        # 對每個xyz, 找到最接近0的rgb
+        best_idx = np.argmin(np.abs(sdf_vals), axis=1)
+        best_rgb = rgb_candidates[best_idx]
+        best_sdf = sdf_vals[np.arange(N), best_idx]
+    # 過濾掉sdf太遠的點
+    mask = np.abs(best_sdf) < threshold
+    return xyz[mask], best_rgb[mask]
 
 def create_camera_frustum(intrinsic, extrinsic, width, height, scale=0.2):
     fx, fy = intrinsic.get_focal_length()
@@ -79,12 +101,14 @@ parser.add_argument('--res', type=int, default=256, help="Voxel grid resolution.
 parser.add_argument('--ckpt_path', type=str, required=True, help="Path to model checkpoint.")
 parser.add_argument('--output_mesh', type=str, required=True, help="Output mesh file path.")
 parser.add_argument('--file_name', type=str, required=True, help="Pointcloud file name.")
+parser.add_argument('--is_a100', type=str2bool, required=True, help="Training on A100 or not.")
 args = parser.parse_args()
 
 res = args.res
 ckpt_path = args.ckpt_path
 output_mesh = args.output_mesh
 file_name = args.file_name
+is_a100 = args.is_a100
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -104,17 +128,8 @@ cam_origin = -R.T @ t
 checkpoint = torch.load(ckpt_path, map_location=device)
 if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
     pe_freqs = checkpoint.get("pe_freqs")
-    # print(f'pe_freqs: {pe_freqs}')
-    view_pe_freqs = checkpoint.get("view_pe_freqs")
-    use_tanh_rgb = checkpoint.get("use_tanh_rgb")
-    use_feature_vector = checkpoint.get("use_feature_vector")
-    feature_vector_size = checkpoint.get("feature_vector_size")
     model = SDFNet(
-        pe_freqs=pe_freqs,
-        view_pe_freqs=view_pe_freqs,
-        use_tanh_rgb=use_tanh_rgb,
-        use_feature_vector=use_feature_vector,
-        feature_vector_size=feature_vector_size
+        pe_freqs=pe_freqs
     ).to(device)
     model.pe_mask = torch.ones(pe_freqs, dtype=torch.bool).to(device)
     model.load_state_dict(checkpoint["model_state_dict"])
@@ -134,84 +149,97 @@ grid_z, grid_y, grid_x = np.meshgrid(z_vals, y_vals, x_vals, indexing='ij')
 
 points = np.stack([grid_x, grid_y, grid_z], axis=-1).reshape(-1, 3)
 
-# === Batched SDF query ===
-def batched_query(model, query_np, cam_origin, batch_size=32768):
-    out = []
-    cam_origin_tensor = torch.tensor(cam_origin, dtype=torch.float32, device=device).unsqueeze(0)
-    for i in range(0, len(query_np), batch_size):
-        batch = torch.tensor(query_np[i:i+batch_size], dtype=torch.float32, device=device, requires_grad=True)
-        view_dirs = batch - cam_origin_tensor
-        view_dirs = view_dirs / torch.norm(view_dirs, dim=-1, keepdim=True)
-        sdf, _ = model(batch, view_dirs=view_dirs)
-        out.append(sdf.detach().cpu().numpy())  # detach here to avoid graph memory
-    return np.concatenate(out, axis=0)
+# === 1. marching cubes產生verts ===
+# 建立 3D 空間格點
+points = np.stack([grid_x, grid_y, grid_z], axis=-1).reshape(-1, 3)  # [N, 3]
+N = points.shape[0]
 
-sdf_pred = batched_query(model, points, cam_origin)
+# 建立顏色搜尋表
+if is_a100:
+    rgb_lin = np.linspace(0, 1, 16)  # 視顏色解析度調整
+else:
+    rgb_lin = np.linspace(0, 1, 8)  # 視顏色解析度調整
 
-# 排除極端值後，找最大頻率落點（histogram mode）
-hist, bin_edges = np.histogram(sdf_pred, bins=200, range=(-3, 3))
-mode_center = bin_edges[np.argmax(hist)]
+rgb_candidates = np.stack(np.meshgrid(rgb_lin, rgb_lin, rgb_lin, indexing='ij'), axis=-1).reshape(-1, 3)  # [K, 3]
+K = rgb_candidates.shape[0]
 
-# 對齊該模式中心
-sdf_pred_centered = sdf_pred - mode_center
-print("New median after centering:", np.median(sdf_pred_centered))
+batch_size = 256
+min_sdf = np.zeros(N, dtype=np.float32)
+best_rgb = np.zeros((N, 3), dtype=np.float32)
 
-sdf_grid = sdf_pred_centered.reshape(res, res, res)
-# sdf_grid = sdf_pred.reshape(res, res, res)
+print("Querying 6D SDF for marching cubes grid ...")
+for i in tqdm(range(0, N, batch_size)):
+    end = min(i+batch_size, N)
+    xyz_batch = points[i:end]  # [B, 3]
+    B = xyz_batch.shape[0]
+    # 擴展為 B*K 個6D點
+    xyz_tile = np.repeat(xyz_batch, K, axis=0)  # [B*K, 3]
+    rgb_tile = np.tile(rgb_candidates, (B, 1))  # [B*K, 3]
+    query_6d = np.concatenate([xyz_tile, rgb_tile], axis=1)  # [B*K, 6]
+    with torch.no_grad():
+        batch_6d = torch.tensor(query_6d, dtype=torch.float32, device=device)
+        sdf_vals = model(batch_6d).cpu().numpy().reshape(B, K)
+    # min_indices = np.argmin(np.abs(sdf_vals), axis=1)
+    # min_sdf[i:end] = sdf_vals[np.arange(B), min_indices]
+    # best_rgb[i:end] = rgb_candidates[min_indices]
+    topk = 4
+    sort_idxs = np.argsort(np.abs(sdf_vals), axis=1)
+    topk_idxs = sort_idxs[:, :topk]
+    rgb_avg = np.mean(rgb_candidates[topk_idxs], axis=1)
+    min_sdf[i:end] = np.mean(sdf_vals[np.arange(B)[:, None], topk_idxs], axis=1)
+    best_rgb[i:end] = rgb_avg
 
-if np.min(sdf_grid) >= 0 or np.max(sdf_grid) <= 0:
-    raise ValueError("SDF field has no zero-crossing surface!")
 
-spacing_val = x_vals[1] - x_vals[0]
+sdf_grid = min_sdf.reshape(res, res, res)
+rgb_grid = best_rgb.reshape(res, res, res, 3)
+
+sdf_grid[np.abs(sdf_grid) > 0.05] = 1
+sdf_grid = gaussian_filter(sdf_grid, sigma=1)
+
 spacing = (z_vals[1] - z_vals[0], y_vals[1] - y_vals[0], x_vals[1] - x_vals[0])
-
-sdf_grid[np.abs(sdf_grid) > 0.1] = 1
-# thresh = np.percentile(np.abs(sdf_pred), 99.9999999)  # 只排除極端值
-# sdf_grid[np.abs(sdf_grid) > thresh] = 1
-# sdf_grid = np.clip(sdf_grid, -3.0, 3.0)
-
 verts, faces, normals, _ = measure.marching_cubes(sdf_grid, level=0.0, spacing=spacing)
-# move verts back to [-1, 1]
 verts = verts + np.array(min_bound)[::-1]
 verts = verts[:, [2, 1, 0]]
 
-verts_tensor = torch.tensor(verts, dtype=torch.float32, device=device)
-cam_origin_tensor = torch.tensor(cam_origin, dtype=torch.float32, device=device).unsqueeze(0)
-view_dirs = verts_tensor - cam_origin_tensor
-view_dirs = view_dirs / torch.norm(view_dirs, dim=-1, keepdim=True)
+# 對每個mesh vertex找最靠近的格點顏色
+grid_xyz = np.stack([grid_x, grid_y, grid_z], axis=-1).reshape(-1, 3)
+tree = cKDTree(grid_xyz)
+dists, idxs = tree.query(verts)
+verts_colors = best_rgb[idxs]
 
-with torch.no_grad():
-    _, rgb_pred = model(verts_tensor, view_dirs=view_dirs, compute_grad=False)
-    rgb_np = (rgb_pred.clamp(0, 1).cpu().numpy() * 255).astype(np.uint8)
-
+# 2. 組成 open3d mesh
 mesh_o3d = o3d.geometry.TriangleMesh()
 mesh_o3d.vertices = o3d.utility.Vector3dVector(verts)
 mesh_o3d.triangles = o3d.utility.Vector3iVector(faces)
-mesh_o3d.vertex_colors = o3d.utility.Vector3dVector(rgb_np.astype(np.float32) / 255.0)
+mesh_o3d.vertex_colors = o3d.utility.Vector3dVector(verts_colors)
 mesh_o3d.compute_vertex_normals()
+
+# 3. 輸出
 o3d.io.write_triangle_mesh(output_mesh, mesh_o3d)
+print(f"Exported colored mesh: {output_mesh}")
 
-print("Mesh exported.")
 
-print("SDF value stats:")
-print("Min:", np.min(sdf_pred))
-print("Max:", np.max(sdf_pred))
-print("Mean:", np.mean(sdf_pred))
-print("Percentiles:", np.percentile(sdf_pred, [0.1, 1, 25, 50, 75, 99, 99.9]))
+# print("Mesh exported.")
 
-print("SDF grid min/max:", np.min(sdf_grid), np.max(sdf_grid))
-print("SDF grid shape:", sdf_grid.shape)
-print("Zero-crossing count:", np.sum(np.abs(sdf_grid) < 0.01))
+# print("SDF value stats:")
+# print("Min:", np.min(sdf_pred))
+# print("Max:", np.max(sdf_pred))
+# print("Mean:", np.mean(sdf_pred))
+# print("Percentiles:", np.percentile(sdf_pred, [0.1, 1, 25, 50, 75, 99, 99.9]))
 
-print("First few verts:", verts[:5])
-print("Point cloud bounds:", np.asarray(pcd.points).min(0), np.asarray(pcd.points).max(0))
-print(f"Shape of verts: {verts.shape}")
-print("Verts bounds:", verts.min(0), verts.max(0))
+# print("SDF grid min/max:", np.min(sdf_grid), np.max(sdf_grid))
+# print("SDF grid shape:", sdf_grid.shape)
+# print("Zero-crossing count:", np.sum(np.abs(sdf_grid) < 0.01))
 
-points_np = np.asarray(pcd.points)
-for i in range(3):
-    print(f"PointCloud axis={i} bbox:", points_np[:, i].min(), points_np[:, i].max(), 
-          f"; Mesh verts axis={i} bbox:", verts[:, i].min(), verts[:, i].max())
+# print("First few verts:", verts[:5])
+# print("Point cloud bounds:", np.asarray(pcd.points).min(0), np.asarray(pcd.points).max(0))
+# print(f"Shape of verts: {verts.shape}")
+# print("Verts bounds:", verts.min(0), verts.max(0))
+
+# points_np = np.asarray(pcd.points)
+# for i in range(3):
+#     print(f"PointCloud axis={i} bbox:", points_np[:, i].min(), points_np[:, i].max(), 
+#           f"; Mesh verts axis={i} bbox:", verts[:, i].min(), verts[:, i].max())
     
 if slice:
     sdf_slice_output_path = output_mesh + "_SDFslice.png"

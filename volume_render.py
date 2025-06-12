@@ -62,9 +62,9 @@ def volume_rendering(
     rendered_color = torch.sum(weights.unsqueeze(-1) * pred_rgb, dim=1)  # [R, 3]
     rendered_color = torch.nan_to_num(rendered_color, nan=0.0, posinf=1.0, neginf=0.0)
 
-    # Composite points (optional)
+    # Composite points
     ray_pts = rays_o.unsqueeze(1) + rays_d.unsqueeze(1) * z_vals.unsqueeze(-1)  # [R, N, 3]
     composite_pts = torch.sum(weights.unsqueeze(-1) * ray_pts, dim=1)  # [R, 3]
-    composite_pts = torch.nan_to_num(composite_pts, nan=0.0, posinf=0.0, neginf=0.0)
+    composite_pts = torch.nan_to_num(composite_pts, nan=0.0, posinf=0.0, neginf=0.0) # weighted average of points 代表該 ray 與物體表面交會的預估點。
 
     return rendered_color, composite_pts

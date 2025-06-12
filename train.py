@@ -11,6 +11,7 @@ from loss import compute_loss
 import matplotlib.pyplot as plt
 import torchvision.transforms as T
 from copy import deepcopy
+from utils import str2bool
 
 from torch.optim.lr_scheduler import LambdaLR
 from torch.optim.lr_scheduler import MultiStepLR
@@ -26,18 +27,6 @@ def get_stage_config(schedule, epoch):
         return schedule['coarse']
     elif epoch < schedule["coarse"]["epochs"] + schedule["fine"]["epochs"]:
         return schedule['fine']
-    else:
-        return schedule['color']
-
-def str2bool(v):
-    if isinstance(v, bool):
-        return v
-    if v.lower() in ('true', '1'):
-        return True
-    elif v.lower() in ('false', '0'):
-        return False
-    else:
-        raise argparse.ArgumentTypeError('Boolean value expected.')
 
 parser = argparse.ArgumentParser(description="SDFNet training script.")
 parser.add_argument('--lr', type=float, default=0.005, help="Learning rate.")
@@ -143,15 +132,14 @@ print(f'save debug img.')
 plt.imsave("debug_gt_image.png", gt_image_np)
 
 
-# x = torch.cat([points, colors], dim=1) # [N,6], x includes x and c
-x = points
+x = torch.cat([points, colors], dim=1) # [N,6], x includes x and c
+# x = points
 x = x.to(device)
 
 assert np.allclose(np.asarray(pcd.points), x[:, :3].cpu().numpy(), atol=1e-5), "!!!!Mismatch between x and normals!!!!"
 
 max_pe_freqs = max(schedule["coarse"]["pe_freqs"],
-                   schedule["fine"]["pe_freqs"],
-                   schedule["color"]["pe_freqs"])
+                   schedule["fine"]["pe_freqs"])
 
 print(f'max_pe_freqs: {max_pe_freqs}')
 
@@ -166,26 +154,26 @@ optimizer = torch.optim.AdamW(
 )
 
 # lr_tune
-# scheduler = CosineAnnealingLR(
-#     optimizer,
-#     T_max=total_epochs,      
-#     eta_min=1e-5             # lowest lr
-# )
+scheduler = CosineAnnealingLR(
+    optimizer,
+    T_max=total_epochs,      
+    eta_min=1e-5             # lowest lr
+)
 
 # 初始 scheduler（非 color 階段）
-scheduler_1 = CosineAnnealingLR(
-    optimizer,
-    T_max=schedule["coarse"]["epochs"] + schedule["fine"]["epochs"],
-    eta_min=1e-5
-)
-scheduler_2 = None  # 預設為 None，color 階段才會建立
+# scheduler_1 = CosineAnnealingLR(
+#     optimizer,
+#     T_max=schedule["coarse"]["epochs"] + schedule["fine"]["epochs"],
+#     eta_min=1e-5
+# )
+# scheduler_2 = None  # 預設為 None，color 階段才會建立
 
 # training
 model.train()
 pbar = tqdm(range(total_epochs), desc="Training")
 
 with open(log_path, "w") as f:
-    f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_normal,loss_sparse,loss_render,learning_rate\n")
+    f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_normal,loss_sparse,learning_rate\n")
 
 for epoch in pbar:
     # Set the training configuration
@@ -207,7 +195,7 @@ for epoch in pbar:
     # weight_consistency   = stage_cfg["loss_weights"]["loss_consistency"]
 
     weight_sparse        = stage_cfg["loss_weights"]["loss_sparse"]
-    weight_render        = stage_cfg["loss_weights"]["loss_render"]
+    # weight_render        = stage_cfg["loss_weights"]["loss_render"]
 
     if stage_cfg is schedule["coarse"]:
         epoch_in_stage = epoch
@@ -215,31 +203,26 @@ for epoch in pbar:
     elif stage_cfg is schedule["fine"]:
         epoch_in_stage = epoch - schedule["coarse"]["epochs"]
         pe_min = schedule["coarse"]["pe_freqs"]
-    elif stage_cfg is schedule["color"]:
-        epoch_in_stage = epoch - schedule["fine"]["epochs"] - schedule["coarse"]["epochs"]
-        pe_min = schedule["fine"]["pe_freqs"]
 
 
-    if stage_cfg is schedule["color"]:
-        for name, param in model.named_parameters():
-            param.requires_grad = "rgb_head" in name
+    # if stage_cfg is schedule["color"]:
+    #     for name, param in model.named_parameters():
+    #         param.requires_grad = "rgb_head" in name
 
-    # print(f'max. lr: {lr}')
-    if stage_cfg is schedule["color"] and scheduler_2 is None:
-        print(f"Switching to second CosineAnnealingLR scheduler for color stage, lr={lr}")
-        for param_group in optimizer.param_groups:
-            param_group['lr'] = 1e-2*lr
-        scheduler_2 = CosineAnnealingLR(
-            optimizer,
-            T_max=schedule["color"]["epochs"],
-            eta_min=1e-2*1e-5
-        )
+    # # print(f'max. lr: {lr}')
+    # if stage_cfg is schedule["color"] and scheduler_2 is None:
+    #     print(f"Switching to second CosineAnnealingLR scheduler for color stage, lr={lr}")
+    #     for param_group in optimizer.param_groups:
+    #         param_group['lr'] = 1e-2*lr
+    #     scheduler_2 = CosineAnnealingLR(
+    #         optimizer,
+    #         T_max=schedule["color"]["epochs"],
+    #         eta_min=1e-2*1e-5
+    #     )
 
-
-    # generate point with noises (Sampling)
-    epsilon = torch.randn_like(x[:, :3]) * sigma # noise
-    x_noisy = x[:, :3] + epsilon  # [N,3]
-    x_noisy_full = torch.cat([x_noisy, x[:, 3:]], dim=1)  # add the color of x to x^n -> [N,6]
+    # generate 6D noise and apply to all (x, y, z, r, g, b)
+    epsilon = torch.randn_like(x) * sigma   # [N,6]
+    x_noisy_full = x + epsilon              # [N,6]
 
     # Move noisy inputs and epsilon to device
     x_noisy_full = x_noisy_full.to(device)
@@ -249,76 +232,30 @@ for epoch in pbar:
     active_pe = pe_min + int((pe_max - pe_min) * min(epoch_in_stage / pe_ramp, 1.0))
     pe_mask = torch.zeros(model.pe_freqs, dtype=torch.bool)
     pe_mask[:active_pe] = True
-    # model.pe_freqs = active_pe.to(device)
+
     # print(f'active_pe: {active_pe}')
     model.pe_mask = pe_mask.to(device)
 
     optimizer.zero_grad()
-    if stage_cfg is not schedule["color"]:
-        # 非 color 階段：正常計算所有 loss 並訓練
-        loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_sparse, loss_render = compute_loss(
-            model,
-            x,
-            x_noisy_full,
-            epsilon,
-            normals,
-            H,
-            W,
-            K,
-            cam_pose_0,
-            gt_image,
-            is_a100,
-            weight_sdf,
-            weight_zero,
-            eik_init,
-            weight_normal,
-            weight_sparse,
-            weight_render  # 不需要 render loss
-        )
-    else:
-        # === Color Stage ===
-        # 1. 評估 geometry losses（但不參與 backward）
-        with torch.no_grad():
-            loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_sparse, _ = compute_loss(
-                model,
-                x,
-                x_noisy_full,
-                epsilon,
-                normals,
-                H,
-                W,
-                K,
-                cam_pose_0,
-                gt_image,
-                is_a100,
-                weight_sdf,
-                weight_zero,
-                eik_init,
-                weight_normal,
-                weight_sparse,
-                0.0  # 不需要 render loss
-            )
 
-        # 2. 計算 render loss，並且 backward（唯一訓練信號）
-        _, _, _, _, _, loss_render = compute_loss(
-            model,
-            x,
-            x_noisy_full,
-            epsilon,
-            normals,
-            H,
-            W,
-            K,
-            cam_pose_0,
-            gt_image,
-            is_a100,
-            weight_sdf,
-            weight_zero,
-            eik_init,
-            weight_normal,
-            weight_sparse,
-            weight_render
-        )
+    loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_sparse = compute_loss(
+        model,
+        x,
+        x_noisy_full,
+        epsilon,
+        normals,
+        H,
+        W,
+        K,
+        cam_pose_0,
+        gt_image,
+        is_a100,
+        weight_sdf,
+        weight_zero,
+        eik_init,
+        weight_normal,
+        weight_sparse
+    )
 
     # -------------------weight setting--------------------
     w_eik = eik_init + (weight_eikonal_final - eik_init) * min(epoch / eik_ramp, 1.0)
@@ -326,17 +263,16 @@ for epoch in pbar:
                 + weight_zero * loss_zero \
                 + w_eik * loss_eikonal \
                 + weight_normal * loss_normal \
-                + weight_sparse * loss_sparse \
-                + weight_render * loss_render
+                + weight_sparse * loss_sparse
     
     loss_total.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) # clip norm
     optimizer.step() # update model's parameters
-    # scheduler.step() # update lr
-    if scheduler_2 is not None:
-        scheduler_2.step()
-    else:
-        scheduler_1.step()
+    scheduler.step() # update lr
+    # if scheduler_2 is not None:
+    #     scheduler_2.step()
+    # else:
+    #     scheduler_1.step()
 
     pbar.set_postfix(
         loss=loss_total.item(),
@@ -353,26 +289,17 @@ for epoch in pbar:
                 {loss_eikonal.item():.6f}, \
                 {loss_normal.item():.6f}, \
                 {loss_sparse.item():.6f}, \
-                {loss_render.item():.6f}, \
                 {current_lr:.8f}\n")
 
     if epoch % 500 == 0 and epoch >= 1000:
         print(f'saving pe_freqs @ epoch {epoch}: {model.pe_freqs}')
         torch.save({
                 "model_state_dict": model.state_dict(),
-                "pe_freqs": model.pe_freqs,
-                "view_pe_freqs": model.view_pe_freqs,
-                "use_tanh_rgb": model.use_tanh_rgb,
-                "use_feature_vector": model.use_feature_vector,
-                "feature_vector_size": model.feature_vector_size
+                "pe_freqs": model.pe_freqs
         }, f"{ckpt_path}_epoch{epoch}.pt")
 
 torch.save({
             "model_state_dict": model.state_dict(),
-            "pe_freqs": model.pe_freqs,
-            "view_pe_freqs": model.view_pe_freqs,
-            "use_tanh_rgb": model.use_tanh_rgb,
-            "use_feature_vector": model.use_feature_vector,
-            "feature_vector_size": model.feature_vector_size
+            "pe_freqs": model.pe_freqs
         }, f"{ckpt_path}_final.pt")
 print("Training finished.")

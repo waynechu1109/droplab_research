@@ -37,13 +37,15 @@ python3 train.py \
 echo -e "\033[32m[1/2] Finish Training\033[0m"
 
 # 2) inference
-epochs=("epoch1500" "epoch2000" "final")
+# epochs=("epoch1000" "epoch1500" "final")
+epochs=("final")
 
 for epoch in "${epochs[@]}"; do
   python3 inference.py \
     --res 256 \
     --ckpt_path "$CKPT_DIR/$EXP_NAME/$FILENAME/sdf_model_${EXP_NAME}_${FILENAME}_${epoch}.pt" \
     --output_mesh "$OUT_DIR/$EXP_NAME/$FILENAME/sdf_model_${EXP_NAME}_${FILENAME}_${epoch}.ply" \
-    --file_name "$FILENAME"
+    --file_name "$FILENAME" \
+    --is_a100 "$IS_A100" 
   echo -e "\033[32m[2/2] Finish Inferencing ${FILENAME} ${epoch}\033[0m"
 done

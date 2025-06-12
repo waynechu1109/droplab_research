@@ -1,5 +1,5 @@
 {
-    "total_epochs": 2500,
+    "total_epochs": 1700,
     "coarse": {
         "epochs": 800,
         "sigma": 0.003,
@@ -15,8 +15,7 @@
             },
             "loss_normal": 0.1,
             "loss_consistency": 0.0,
-            "loss_sparse": 0.009,
-            "loss_render": 0.0
+            "loss_sparse": 0.009
         }
     },
     "fine": {
@@ -34,27 +33,7 @@
             },
             "loss_normal": 0.05,
             "loss_consistency": 0.01,
-            "loss_sparse": 0.009,
-            "loss_render": 0.0
-        }
-    },
-    "color": {
-        "epochs": 800,
-        "sigma": 1e-8,
-        "pe_freqs": 8,
-        "pe_ramp": 320,
-        "loss_weights": {
-            "loss_sdf": 0.0,
-            "loss_zero": 0.0,
-            "loss_eikonal": {
-            "loss_eikonal_init": 0.0,
-            "loss_eikonal_final": 0.0,
-            "loss_eikonal_ramp": 200
-            },
-            "loss_normal": 0.0,
-            "loss_consistency": 0.0,
-            "loss_sparse": 0.0,
-            "loss_render": 100.0
+            "loss_sparse": 0.009
         }
     }
 }

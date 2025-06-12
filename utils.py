@@ -1,5 +1,15 @@
 import torch
 
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('true', '1'):
+        return True
+    elif v.lower() in ('false', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
+
 def render_pointcloud(points: torch.Tensor,
                       colors: torch.Tensor,
                       cam_pose: torch.Tensor,
