@@ -28,7 +28,7 @@ export OMP_NUM_THREADS=1
 for file in dtu_65_47; do
     for lr in 5e-3; do
         echo -e "\033[34m$file: 6d_pe_normalized_${lr}\033[0m"
-        ./scripts/experiment.sh "6d_pe_normalized_${lr}" "$lr" "$file" schedule true
+        ./scripts/experiment.sh "6d_pe_normalized_${lr}" "$lr" "$file" schedule false
     done
 done
 
