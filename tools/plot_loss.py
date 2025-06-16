@@ -40,7 +40,7 @@ try:
         ax1.plot(df["epoch"], df["loss_eikonal"], label="Eikonal", alpha=alpha, linewidth=1, linestyle='--')
         ax1.plot(df["epoch"], df["loss_normal"], label="Normal", alpha=alpha, linewidth=1, linestyle='--')
         ax1.plot(df["epoch"], df["loss_sparse"], label="Sparse", alpha=alpha, linewidth=1, linestyle='--')
-        # ax1.plot(df["epoch"], df["loss_render"], label="Render", alpha=alpha, linewidth=1, linestyle='--')
+        ax1.plot(df["epoch"], df["loss_color_geo"], label="Color Geometry", alpha=alpha, linewidth=1, linestyle='--')
 
         ax1.set_yscale("log")
         ax1.plot(df["epoch"], df["loss_total"], label="Total Loss", color="black", linewidth=3)

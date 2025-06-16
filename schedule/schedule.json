@@ -1,39 +1,39 @@
 {
-    "total_epochs": 5100,
+    "total_epochs": 1700,
     "coarse": {
-        "epochs": 2400,
+        "epochs": 800,
         "sigma": 0.003,
         "pe_freqs": 3,
-        "pe_ramp": 1200,
+        "pe_ramp": 400,
         "loss_weights": {
             "loss_sdf": 5.0,
             "loss_zero": 1.0,
             "loss_eikonal": {
                 "loss_eikonal_init": 0.01,
                 "loss_eikonal_final": 0.06,
-                "loss_eikonal_ramp": 720
+                "loss_eikonal_ramp": 240
             },
             "loss_normal": 0.1,
-            "loss_consistency": 0.0,
-            "loss_sparse": 0.009
+            "loss_sparse": 0.0107,
+            "loss_color_geo": 0.5
         }
     },
     "fine": {
-        "epochs": 2700,
+        "epochs": 900,
         "sigma": 0.005,
         "pe_freqs": 8,
-        "pe_ramp": 1440,
+        "pe_ramp": 480,
         "loss_weights": {
             "loss_sdf": 4.2,
             "loss_zero": 0.5,
             "loss_eikonal": {
                 "loss_eikonal_init": 0.01,
-                "loss_eikonal_final": 0.05,
-                "loss_eikonal_ramp": 1200
+                "loss_eikonal_final": 0.01,
+                "loss_eikonal_ramp": 400
             },
             "loss_normal": 0.05,
-            "loss_consistency": 0.01,
-            "loss_sparse": 0.009
+            "loss_sparse": 0.011,
+            "loss_color_geo": 0.5
         }
     }
 }

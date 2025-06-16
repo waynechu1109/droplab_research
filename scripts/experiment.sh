@@ -25,24 +25,25 @@ SCHE_DIR="schedule"
 mkdir -p "$LOG_DIR/$EXP_NAME/$FILENAME" "$CKPT_DIR/$EXP_NAME/$FILENAME" "$OUT_DIR/$EXP_NAME/$FILENAME"
 
 # 1) training
-# python3 train.py \
-#   --lr "$LR" \
-#   --desc "$EXP_NAME" \
-#   --log_path "$LOG_DIR/$EXP_NAME/$FILENAME/sdf_model_${EXP_NAME}_${FILENAME}.txt" \
-#   --ckpt_path "$CKPT_DIR/$EXP_NAME/$FILENAME/sdf_model_${EXP_NAME}_${FILENAME}" \
-#   --file_name "$FILENAME" \
-#   --schedule_path "$SCHE_DIR/${SCHEDULE}.json" \
-#   --is_a100 "$IS_A100" 
-#   # --para "$PARAMETER"
-# echo -e "\033[32m[1/2] Finish Training\033[0m"
+python3 train.py \
+  --lr "$LR" \
+  --desc "$EXP_NAME" \
+  --log_path "$LOG_DIR/$EXP_NAME/$FILENAME/sdf_model_${EXP_NAME}_${FILENAME}.txt" \
+  --ckpt_path "$CKPT_DIR/$EXP_NAME/$FILENAME/sdf_model_${EXP_NAME}_${FILENAME}" \
+  --file_name "$FILENAME" \
+  --schedule_path "$SCHE_DIR/${SCHEDULE}.json" \
+  --is_a100 "$IS_A100" 
+  # --para "$PARAMETER"
+echo -e "\033[32m[1/2] Finish Training\033[0m"
 
 # 2) inference
 # epochs=("epoch1000" "epoch1500" "final")
+# epochs=("finalitri")
 epochs=("final")
 
 for epoch in "${epochs[@]}"; do
   python3 inference.py \
-    --res 200 \
+    --res 128 \
     --ckpt_path "$CKPT_DIR/$EXP_NAME/$FILENAME/sdf_model_${EXP_NAME}_${FILENAME}_${epoch}.pt" \
     --output_mesh "$OUT_DIR/$EXP_NAME/$FILENAME/sdf_model_${EXP_NAME}_${FILENAME}_${epoch}.ply" \
     --file_name "$FILENAME"

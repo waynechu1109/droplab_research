@@ -17,6 +17,7 @@ from torch.optim.lr_scheduler import LambdaLR
 from torch.optim.lr_scheduler import MultiStepLR
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.optim.lr_scheduler import OneCycleLR
+from torch.cuda.amp import autocast, GradScaler
 
 def load_schedule(schedule_path):
     with open(schedule_path, 'r') as f:
@@ -157,8 +158,10 @@ optimizer = torch.optim.AdamW(
 scheduler = CosineAnnealingLR(
     optimizer,
     T_max=total_epochs,      
-    eta_min=1e-5             # lowest lr
+    eta_min= lr / 500.0            # lowest lr
 )
+
+scaler = GradScaler()
 
 # 初始 scheduler（非 color 階段）
 # scheduler_1 = CosineAnnealingLR(
@@ -173,7 +176,7 @@ model.train()
 pbar = tqdm(range(total_epochs), desc="Training")
 
 with open(log_path, "w") as f:
-    f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_normal,loss_sparse,learning_rate\n")
+    f.write("epoch,loss_total,loss_sdf,loss_zero,loss_eikonal,loss_normal,loss_sparse,loss_color_geo,learning_rate\n")
 
 for epoch in pbar:
     # Set the training configuration
@@ -196,6 +199,8 @@ for epoch in pbar:
 
     weight_sparse        = stage_cfg["loss_weights"]["loss_sparse"]
     # weight_render        = stage_cfg["loss_weights"]["loss_render"]
+    # weight_color_smooth  = stage_cfg["loss_weights"]["loss_color_smooth"]
+    weight_color_geo  = stage_cfg["loss_weights"]["loss_color_geo"]
 
     if stage_cfg is schedule["coarse"]:
         epoch_in_stage = epoch
@@ -238,36 +243,40 @@ for epoch in pbar:
 
     optimizer.zero_grad()
 
-    loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_sparse = compute_loss(
-        model,
-        x,
-        x_noisy_full,
-        epsilon,
-        normals,
-        H,
-        W,
-        K,
-        cam_pose_0,
-        gt_image,
-        is_a100,
-        weight_sdf,
-        weight_zero,
-        eik_init,
-        weight_normal,
-        weight_sparse
-    )
+    with autocast():
+        loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_sparse, loss_color_geo = compute_loss(
+            model,
+            x,
+            x_noisy_full,
+            epsilon,
+            normals,
+            H,
+            W,
+            K,
+            cam_pose_0,
+            gt_image,
+            is_a100,
+            weight_sdf,
+            weight_zero,
+            eik_init,
+            weight_normal,
+            weight_sparse,
+            weight_color_geo
+        )
 
-    # -------------------weight setting--------------------
-    w_eik = eik_init + (weight_eikonal_final - eik_init) * min(epoch / eik_ramp, 1.0)
-    loss_total = weight_sdf * loss_sdf \
-                + weight_zero * loss_zero \
-                + w_eik * loss_eikonal \
-                + weight_normal * loss_normal \
-                + weight_sparse * loss_sparse
-    
-    loss_total.backward()
+        # -------------------weight setting--------------------
+        w_eik = eik_init + (weight_eikonal_final - eik_init) * min(epoch / eik_ramp, 1.0)
+        loss_total = weight_sdf * loss_sdf \
+                    + weight_zero * loss_zero \
+                    + w_eik * loss_eikonal \
+                    + weight_normal * loss_normal \
+                    + weight_sparse * loss_sparse \
+                    + weight_color_geo * loss_color_geo
+                    
+    scaler.scale(loss_total).backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) # clip norm
-    optimizer.step() # update model's parameters
+    scaler.step(optimizer) # update model's parameters
+    scaler.update()
     scheduler.step() # update lr
     # if scheduler_2 is not None:
     #     scheduler_2.step()
@@ -289,6 +298,7 @@ for epoch in pbar:
                 {loss_eikonal.item():.6f}, \
                 {loss_normal.item():.6f}, \
                 {loss_sparse.item():.6f}, \
+                {loss_color_geo.item():.6f}, \
                 {current_lr:.8f}\n")
 
     if epoch % 500 == 0 and epoch >= 1000:

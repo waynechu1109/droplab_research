@@ -86,8 +86,66 @@ import matplotlib.pyplot as plt
 #     loss = (w * sdf_diff2).mean()
 #     return 100 * loss
 
+# def build_augmented_batch(x, n_aug=6, rgb_sigma=0.10):
+#     points = x[:, :3]
+#     colors = x[:, 3:]
+#     N = points.shape[0]
+#     points = points.unsqueeze(1).expand(N, n_aug, 3).reshape(-1, 3)
+#     colors = colors.unsqueeze(1).expand(N, n_aug, 3)
+#     noises = rgb_sigma * torch.randn(N, n_aug, 3, device=points.device)
+#     colors = (colors + noises).reshape(-1, 3)
+#     colors = torch.clamp(colors, 0, 1)
+#     return torch.cat([points, colors], dim=1)
+
+# def compute_color_smooth_and_zero_loss_strong(model, x, n_aug=6, rgb_sigma=0.08, max_groups=64):
+#     # x: [N,6]
+#     device = x.device
+#     aug_x = build_augmented_batch(x, n_aug=n_aug, rgb_sigma=rgb_sigma)
+#     total_groups = aug_x.shape[0] // n_aug
+#     if total_groups > max_groups:
+#         group_idx = torch.randperm(total_groups, device=device)[:max_groups]
+#     else:
+#         group_idx = torch.arange(total_groups, device=device)
+#     losses = []
+#     zero_losses = []
+#     for i in group_idx:
+#         start = i * n_aug
+#         end = (i + 1) * n_aug
+#         group = aug_x[start:end]
+#         sdf = model(group)
+#         rgb_block = group[:, 3:]
+#         # 強制 group SDF mean 約為0
+#         zero_loss = sdf.mean().abs()
+#         # 極強 color smooth (無mask)
+#         diff = rgb_block.unsqueeze(0) - rgb_block.unsqueeze(1)
+#         smooth_loss = (diff ** 2).sum(-1).mean()
+#         losses.append(smooth_loss)
+#         zero_losses.append(zero_loss)
+#     if len(losses) == 0:
+#         return torch.tensor(0.0, device=device), torch.tensor(0.0, device=device)
+#     return torch.stack(losses).mean(), torch.stack(zero_losses).mean()
+
+def color_geometry_loss(x, f_x, alpha=10.0, sample_size=1024):
+    # x: [N,6]; f_x: [N]
+    N = x.shape[0]
+    device = x.device
+    idx = torch.randperm(N, device=device)[:sample_size]
+    x_sub = x[idx]  # [sample_size, 6]
+    f_sub = f_x[idx]  # [sample_size]
+    rgb = x_sub[:, 3:]  # [sample_size, 3]
+
+    # Pairwise color distance
+    color_diff2 = (rgb.unsqueeze(1) - rgb.unsqueeze(0)).pow(2).sum(-1)  # [sample_size, sample_size]
+    # Pairwise sdf distance
+    sdf_diff2 = (f_sub.unsqueeze(1) - f_sub.unsqueeze(0)).pow(2)  # [sample_size, sample_size]
+    # Weight: color越接近越重，越遠越輕
+    w = torch.exp(-alpha * color_diff2)
+    # 損失
+    loss = (w * sdf_diff2).mean()
+    return loss
+
 # refer to SparseNeuS
-def compute_sparse_loss(model, x, num_samples=10000, box_margin=0.1, tau=20.0):
+def compute_sparse_loss(model, x, num_samples, box_margin=0.1, tau=20.0):
     with torch.no_grad():
         min_bound = x.min(dim=0)[0]
         max_bound = x.max(dim=0)[0]
@@ -149,8 +207,11 @@ def compute_loss(
         weight_zero,
         eik_init,
         weight_normal,
-        weight_sparse
+        weight_sparse,
+        weight_color_geo
     ):
+    # aug_x = build_augmented_batch(x, n_aug=5, rgb_sigma=0.1)
+
     # 1. SDF Loss: x_noisy_full 是 6D 點, epsilon 是 6D noise
     if weight_sdf > 0.0:
         # 假設normals為[N,3]，如果你要6D signed distance可直接用
@@ -165,6 +226,8 @@ def compute_loss(
     # 2. Zero loss: ||f(x, c)|| at GT表面
     if weight_zero > 0.0:
         loss_zero = model(x).abs().mean()
+        # loss_zero = model(x_noisy_full).abs().mean()
+        # loss_zero = model(aug_x).abs().mean()
     else:
         loss_zero = torch.tensor(0.0, device=x.device)
 
@@ -196,9 +259,9 @@ def compute_loss(
         if not isinstance(normals, torch.Tensor):
             normals = torch.tensor(normals, dtype=torch.float32, device=x.device)
         if is_a100:
-            loss_normal = compute_normal_loss(model, x, normals, batch_size=8192)
+            loss_normal = compute_normal_loss(model, x, normals, batch_size=2**18)
         else:
-            loss_normal = compute_normal_loss(model, x, normals, batch_size=2048)
+            loss_normal = compute_normal_loss(model, x, normals, batch_size=2**16)
         if not isinstance(loss_normal, torch.Tensor):
             loss_normal = torch.tensor(loss_normal, device=x.device)
     else:
@@ -209,8 +272,29 @@ def compute_loss(
         if is_a100:
             loss_sparse = compute_sparse_loss(model, x, num_samples=100000)
         else:
-            loss_sparse = compute_sparse_loss(model, x, num_samples=3000)
+            loss_sparse = compute_sparse_loss(model, x, num_samples=2**11)
     else:
         loss_sparse = torch.tensor(0.0, device=x.device)
 
-    return loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_sparse
+    # 6. Color Smooth Loss
+    # if weight_color_smooth > 0.0 and weight_zero > 0.0:
+    #     if is_a100:
+    #         loss_color_smooth, loss_zero = compute_color_smooth_and_zero_loss_strong(
+    #             model, x, n_aug=5, rgb_sigma=0.08, max_groups=2**10
+    #         )
+    #     else:
+    #         loss_color_smooth, loss_zero = compute_color_smooth_and_zero_loss_strong(
+    #             model, x, n_aug=5, rgb_sigma=0.08, max_groups=2**4
+    #         )
+    # else:
+    #     loss_color_smooth = torch.tensor(0.0, device=x.device)
+
+    # Color Geometry Loss
+    if weight_color_geo > 0.0:
+        f_x = model(x)
+        loss_color_geo = color_geometry_loss(x, f_x, alpha=10.0, sample_size=2**10)
+    else:
+        loss_color_geo = torch.tensor(0.0, device=x.device)
+
+
+    return loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_sparse, loss_color_geo

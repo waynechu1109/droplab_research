@@ -68,43 +68,41 @@ points = np.stack([grid_x, grid_y, grid_z], axis=-1).reshape(-1, 3)  # [N, 3]
 N = points.shape[0]
 
 # === KNN assign color ===
-print("Assigning colors via KNN (using faiss GPU, with progress bar)...")
-pc_xyz_f32 = np.ascontiguousarray(pc_xyz.astype('float32'))
-points_f32 = np.ascontiguousarray(points.astype('float32'))
+print("Assigning colors via KNN...")
+pc_xyz_f32 = np.ascontiguousarray(pc_xyz.astype('float32'))  # xyz of pcd
+points_f32 = np.ascontiguousarray(points.astype('float32'))  # grid
 
 index = faiss.IndexFlatL2(3)
-# if torch.cuda.is_available():
-#     print('Using CUDA...')
-#     res = faiss.StandardGpuResources()
-#     index = faiss.index_cpu_to_gpu(res, 0, index)
 
 batch_size_add = 500_000
 n = pc_xyz_f32.shape[0]
-for i in tqdm(range(0, n, batch_size_add), desc="Add to faiss index"):
+for i in range(0, n, batch_size_add):
     end = min(i+batch_size_add, n)
     index.add(pc_xyz_f32[i:end])
 
-batch_size_knn = 50000  # 可根據顯存大小調整
-grid_rgb = np.zeros((points_f32.shape[0], 3), dtype=np.float32)
+batch_size_knn = 50000  # adjust based in vram usage
+grid_rgb = np.zeros((points_f32.shape[0], 3), dtype=np.float32) # initialize grid's color
 for i in tqdm(range(0, points_f32.shape[0], batch_size_knn), desc="KNN color"):
     end = min(i+batch_size_knn, points_f32.shape[0])
     dists, idxs = index.search(points_f32[i:end], 1)
     grid_rgb[i:end] = pc_rgb[idxs.squeeze()]
 
-# === Query SDF (in 6D) ===
-print("Querying SDF...")
+# === Query SDF in 6D ===
+print("Querying SDF in 6D...")
 batch_size = 4096
 sdf_vals = np.zeros(N, dtype=np.float32)
 for i in tqdm(range(0, N, batch_size)):
     end = min(i + batch_size, N)
-    batch_xyz = points[i:end]
-    batch_rgb = grid_rgb[i:end]
-    batch_6d = np.concatenate([batch_xyz, batch_rgb], axis=1)
+    batch_xyz = points[i:end]    # grid xyz
+    batch_rgb = grid_rgb[i:end]  # grid rgb
+    batch_6d = np.concatenate([batch_xyz, batch_rgb], axis=1)  # concat. input 6d vector
     with torch.no_grad():
         batch_tensor = torch.tensor(batch_6d, dtype=torch.float32, device=device)
         sdf_vals[i:end] = model(batch_tensor).cpu().numpy().squeeze()
 
 sdf_grid = sdf_vals.reshape(res, res, res)
+# sdf_grid[np.abs(sdf_grid) > 0.1] = 1
+
 rgb_grid = grid_rgb.reshape(res, res, res, 3)
 
 # marching cubes前高斯平滑，防破碎
@@ -137,4 +135,3 @@ if slice:
     slice_img = sdf_grid[res // 2]
     plt.imsave(sdf_slice_output_path, slice_img, cmap='RdBu', vmin=-1, vmax=1)
     print(f"Raw SDF slice image saved to {sdf_slice_output_path}")
-
