@@ -125,6 +125,34 @@ import matplotlib.pyplot as plt
 #         return torch.tensor(0.0, device=device), torch.tensor(0.0, device=device)
 #     return torch.stack(losses).mean(), torch.stack(zero_losses).mean()
 
+
+def compute_negative_sdf_loss(model, x, ratio=0.5, sdf_target=1.0, expand=0.2, batch_size=2**12):
+    """
+    計算負樣本 SDF loss：
+    - 在點雲 bounding box 外部均勻取樣，target SDF 設為遠離 0（預設 1.0）。
+    - ratio: 負樣本與正樣本數量比例（預設 0.5）。
+    - expand: bounding box 外擴倍數。
+    """
+    device = x.device
+    N_neg = int(x.shape[0] * ratio)
+    points = x[:, :3]
+    bbox_min, bbox_max = points.min(0)[0], points.max(0)[0]
+    # 外擴後 uniform sampling
+    min_neg = bbox_min - expand * (bbox_max - bbox_min)
+    max_neg = bbox_max + expand * (bbox_max - bbox_min)
+    neg_xyz = torch.rand(N_neg, 3, device=device) * (max_neg - min_neg) + min_neg
+    neg_rgb = torch.rand(N_neg, 3, device=device)  # 隨機顏色即可
+    neg_x = torch.cat([neg_xyz, neg_rgb], dim=1)
+    neg_target = torch.full((N_neg,), float(sdf_target), device=device)
+
+    # 若 batch 太大可分批處理
+    losses = []
+    for i in range(0, N_neg, batch_size):
+        end = min(i + batch_size, N_neg)
+        sdf_pred = model(neg_x[i:end])
+        losses.append(F.mse_loss(sdf_pred, neg_target[i:end]))
+    return torch.stack(losses).mean()
+
 def color_geometry_loss(x, f_x, alpha=10.0, sample_size=1024):
     # x: [N,6]; f_x: [N]
     N = x.shape[0]
@@ -145,7 +173,7 @@ def color_geometry_loss(x, f_x, alpha=10.0, sample_size=1024):
     return loss
 
 # refer to SparseNeuS
-def compute_sparse_loss(model, x, num_samples, box_margin=0.1, tau=20.0):
+def compute_sparse_loss(model, x, num_samples, box_margin=0.1, tau=30.0):
     with torch.no_grad():
         min_bound = x.min(dim=0)[0]
         max_bound = x.max(dim=0)[0]
@@ -208,7 +236,8 @@ def compute_loss(
         eik_init,
         weight_normal,
         weight_sparse,
-        weight_color_geo
+        weight_color_geo,
+        weight_neg_sdf
     ):
     # aug_x = build_augmented_batch(x, n_aug=5, rgb_sigma=0.1)
 
@@ -272,7 +301,7 @@ def compute_loss(
         if is_a100:
             loss_sparse = compute_sparse_loss(model, x, num_samples=100000)
         else:
-            loss_sparse = compute_sparse_loss(model, x, num_samples=2**11)
+            loss_sparse = compute_sparse_loss(model, x, num_samples=2**16)
     else:
         loss_sparse = torch.tensor(0.0, device=x.device)
 
@@ -292,9 +321,20 @@ def compute_loss(
     # Color Geometry Loss
     if weight_color_geo > 0.0:
         f_x = model(x)
-        loss_color_geo = color_geometry_loss(x, f_x, alpha=10.0, sample_size=2**10)
+        loss_color_geo = color_geometry_loss(x, f_x, alpha=10.0, sample_size=2**13)
     else:
         loss_color_geo = torch.tensor(0.0, device=x.device)
 
+    # Negative SDF Loss
+    if weight_neg_sdf > 0.0:
+        if is_a100:
+            f_x = model(x)
+            loss_neg_sdf = compute_negative_sdf_loss(model, x, ratio=0.3, sdf_target=1.0, expand=0.2, batch_size=2**10)
+        else:
+            f_x = model(x)
+            loss_neg_sdf = compute_negative_sdf_loss(model, x, ratio=0.3, sdf_target=1.0, expand=0.2, batch_size=2**13)
+    else:
+        loss_neg_sdf = torch.tensor(0.0, device=x.device)
 
-    return loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_sparse, loss_color_geo
+
+    return loss_sdf, loss_zero, loss_eikonal, loss_normal, loss_sparse, loss_color_geo, loss_neg_sdf

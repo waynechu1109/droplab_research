@@ -4,7 +4,7 @@ import math
 from torch.nn.utils import weight_norm
 
 class SDFNet(nn.Module):
-    def __init__(self, pe_freqs, hidden_dim=256, num_layers=8, skip_connection_at=4):
+    def __init__(self, pe_freqs, hidden_dim=64, num_layers=8, skip_connection_at=4):
         super().__init__()
         self.pe_freqs = pe_freqs
         self.hidden_dim = hidden_dim

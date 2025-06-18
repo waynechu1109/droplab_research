@@ -1,7 +1,7 @@
 {
-    "total_epochs": 1700,
+    "total_epochs": 1800,
     "coarse": {
-        "epochs": 800,
+        "epochs": 900,
         "sigma": 0.003,
         "pe_freqs": 3,
         "pe_ramp": 400,
@@ -10,12 +10,13 @@
             "loss_zero": 1.0,
             "loss_eikonal": {
                 "loss_eikonal_init": 0.01,
-                "loss_eikonal_final": 0.06,
-                "loss_eikonal_ramp": 240
+                "loss_eikonal_final": 0.04,
+                "loss_eikonal_ramp": 400
             },
             "loss_normal": 0.1,
-            "loss_sparse": 0.0107,
-            "loss_color_geo": 0.5
+            "loss_sparse": 0.0121,
+            "loss_color_geo": 0.5,
+            "loss_neg_sdf": 0.01
         }
     },
     "fine": {
@@ -28,12 +29,13 @@
             "loss_zero": 0.5,
             "loss_eikonal": {
                 "loss_eikonal_init": 0.01,
-                "loss_eikonal_final": 0.01,
-                "loss_eikonal_ramp": 400
+                "loss_eikonal_final": 0.02,
+                "loss_eikonal_ramp": 450
             },
             "loss_normal": 0.05,
-            "loss_sparse": 0.011,
-            "loss_color_geo": 0.5
+            "loss_sparse": 0.012,
+            "loss_color_geo": 0.5,
+            "loss_neg_sdf": 0.01
         }
     }
 }
