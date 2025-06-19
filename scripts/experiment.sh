@@ -43,7 +43,7 @@ epochs=("final")
 
 for epoch in "${epochs[@]}"; do
   python3 inference.py \
-    --res 100 \
+    --res 256 \
     --ckpt_path "$CKPT_DIR/$EXP_NAME/$FILENAME/sdf_model_${EXP_NAME}_${FILENAME}_${epoch}.pt" \
     --output_mesh "$OUT_DIR/$EXP_NAME/$FILENAME/sdf_model_${EXP_NAME}_${FILENAME}_${epoch}.ply" \
     --file_name "$FILENAME"

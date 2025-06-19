@@ -16,7 +16,7 @@ from scipy.ndimage import gaussian_filter
 from utils import render_pointcloud, str2bool
 
 hist_ = False
-slice = False
+slice = True
 render_verts = False
 
 parser = argparse.ArgumentParser(description="SDFNet inference script (KNN Color, Fast).")
@@ -129,9 +129,45 @@ mesh_o3d.compute_vertex_normals()
 o3d.io.write_triangle_mesh(output_mesh, mesh_o3d)
 print(f"Exported colored mesh: {output_mesh}")
 
-# ========== 其他分析與可選功能不變 ==========
 if slice:
-    sdf_slice_output_path = output_mesh + "_SDFslice.png"
-    slice_img = sdf_grid[res // 2]
-    plt.imsave(sdf_slice_output_path, slice_img, cmap='RdBu', vmin=-1, vmax=1)
-    print(f"Raw SDF slice image saved to {sdf_slice_output_path}")
+    # 設定檔名
+    sdf_slice_output_path_x = output_mesh + "_SDFslice_x.png"
+    sdf_slice_output_path_y = output_mesh + "_SDFslice_y.png"
+    sdf_slice_output_path_z = output_mesh + "_SDFslice_z.png"
+
+    # 擷取三個方向的中間切片
+    slice_img_x = sdf_grid[res // 2, :, :]
+    slice_img_y = sdf_grid[:, res // 2, :]
+    slice_img_z = sdf_grid[:, :, res // 2]
+
+    # 儲存函數（含刻度與 colorbar）
+    def save_slice_with_axes(img, path, axis_label):
+        plt.figure(figsize=(6, 5))
+
+        vmin, vmax = 0, 3
+    
+        # 顯示背景色圖
+        im = plt.imshow(img, cmap='RdBu', vmin=vmin, vmax=vmax, origin='lower')
+
+        # 加入等高線（contour lines）
+        contour_levels = np.linspace(vmin, vmax, 11)  # 共畫11條線
+        contours = plt.contour(img, levels=contour_levels, colors='black', linewidths=0.5, origin='lower')
+        plt.clabel(contours, fmt="%.2f", fontsize=7)
+
+        # 加入 colorbar 與標題、軸標籤
+        cbar = plt.colorbar(im, label='Signed Distance')
+        plt.title(f'SDF Slice - {axis_label} axis')
+        plt.xlabel('Voxel X' if axis_label != 'X' else 'Voxel Y')
+        plt.ylabel('Voxel Y' if axis_label == 'Z' else 'Voxel Z')
+        plt.xticks(np.linspace(0, img.shape[1], 5, dtype=int))
+        plt.yticks(np.linspace(0, img.shape[0], 5, dtype=int))
+        plt.grid(True, linestyle='--', alpha=0.3)
+        plt.tight_layout()
+        plt.savefig(path)
+        plt.close()
+        print(f"SDF slice with contour saved to {path}")
+
+    # 儲存三張圖
+    save_slice_with_axes(slice_img_x, sdf_slice_output_path_x, 'X')
+    save_slice_with_axes(slice_img_y, sdf_slice_output_path_y, 'Y')
+    save_slice_with_axes(slice_img_z, sdf_slice_output_path_z, 'Z')
