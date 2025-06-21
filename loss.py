@@ -225,11 +225,6 @@ def compute_loss(
         x_noisy_full, 
         epsilon, 
         normals, 
-        H, 
-        W, 
-        K, 
-        cam_pose, 
-        gt_image, 
         is_a100, 
         weight_sdf,
         weight_zero,
@@ -329,10 +324,10 @@ def compute_loss(
     if weight_neg_sdf > 0.0:
         if is_a100:
             f_x = model(x)
-            loss_neg_sdf = compute_negative_sdf_loss(model, x, ratio=0.3, sdf_target=3.0, expand=0.2, batch_size=2**15)
+            loss_neg_sdf = compute_negative_sdf_loss(model, x, ratio=0.3, sdf_target=1.0, expand=0.2, batch_size=2**15)
         else:
             f_x = model(x)
-            loss_neg_sdf = compute_negative_sdf_loss(model, x, ratio=0.3, sdf_target=3.0, expand=0.2, batch_size=2**13)
+            loss_neg_sdf = compute_negative_sdf_loss(model, x, ratio=0.3, sdf_target=1.0, expand=0.2, batch_size=2**13)
     else:
         loss_neg_sdf = torch.tensor(0.0, device=x.device)
 

@@ -78,59 +78,59 @@ centre = torch.tensor(info["centre"], dtype=torch.float32, device=device)
 scale = torch.tensor(info["scale"], dtype=torch.float32, device=device)
 
 # build intrinsic K
-image_candidates = glob.glob(f"data/{file_name}.jpg") + glob.glob(f"data/{file_name}.png")
-if len(image_candidates) == 0:
-    raise FileNotFoundError(f"No image found for {file_name}.jpg or .png in data/")
-print("Successfully read input image.")
-img_path = image_candidates[0] 
-with Image.open(img_path) as img:
-    W, H = img.size
-    img_tensor = T.ToTensor()(img).permute(1, 2, 0).to(device)
-cx, cy = W / 2, H / 2
-fx = fy = focals[0][0]
-K = torch.tensor([
-    [fx, 0, cx],
-    [0, fy, cy],
-    [0,  0, 1]
-], device=device)
+# image_candidates = glob.glob(f"data/{file_name}.jpg") + glob.glob(f"data/{file_name}.png")
+# if len(image_candidates) == 0:
+#     raise FileNotFoundError(f"No image found for {file_name}.jpg or .png in data/")
+# print("Successfully read input image.")
+# img_path = image_candidates[0] 
+# with Image.open(img_path) as img:
+#     W, H = img.size
+#     img_tensor = T.ToTensor()(img).permute(1, 2, 0).to(device)
+# cx, cy = W / 2, H / 2
+# fx = fy = focals[0][0]
+# K = torch.tensor([
+#     [fx, 0, cx],
+#     [0, fy, cy],
+#     [0,  0, 1]
+# ], device=device)
 
-# === Step 1: 原始 pose ===
-pose_0 = poses[0].clone()
-R = pose_0[:3, :3]  # [3,3]
-t = pose_0[:3, 3]   # [3,]
+# # === Step 1: 原始 pose ===
+# pose_0 = poses[0].clone()
+# R = pose_0[:3, :3]  # [3,3]
+# t = pose_0[:3, 3]   # [3,]
 
-# === Step 2: normalize 相機位置 ===
-cam_pos = (-R.T @ t)                # camera position in world space
-cam_pos_norm = (cam_pos - centre) / scale  # normalize
+# # === Step 2: normalize 相機位置 ===
+# cam_pos = (-R.T @ t)                # camera position in world space
+# cam_pos_norm = (cam_pos - centre) / scale  # normalize
 
-# === Step 3: 計算新的 t ===
-t_norm = -R @ cam_pos_norm          # 推回相機座標系下的 t'
+# # === Step 3: 計算新的 t ===
+# t_norm = -R @ cam_pos_norm          # 推回相機座標系下的 t'
 
-# === Step 4: 建立新 pose ===
-pose_0_normed = torch.eye(4, device=device)
-pose_0_normed[:3, :3] = R
-pose_0_normed[:3, 3] = t_norm
+# # === Step 4: 建立新 pose ===
+# pose_0_normed = torch.eye(4, device=device)
+# pose_0_normed[:3, :3] = R
+# pose_0_normed[:3, 3] = t_norm
 
-# === 使用新 pose ===
-cam_pose_0 = pose_0_normed
+# # === 使用新 pose ===
+# cam_pose_0 = pose_0_normed
 
-# render
-# pcd is already normalized
-print("Rendering in normalized space...")
-print("Cam pose_0:\n", cam_pose_0)
-if isinstance(points, torch.Tensor):
-    print("Points range:", torch.amin(points, dim=0), torch.amax(points, dim=0))
-else:
-    print("Points range:", np.min(points, axis=0), np.max(points, axis=0))
+# # render
+# # pcd is already normalized
+# print("Rendering in normalized space...")
+# print("Cam pose_0:\n", cam_pose_0)
+# if isinstance(points, torch.Tensor):
+#     print("Points range:", torch.amin(points, dim=0), torch.amax(points, dim=0))
+# else:
+#     print("Points range:", np.min(points, axis=0), np.max(points, axis=0))
 
-# gt_image, dep = render_pointcloud(points, colors, cam_pose, K, (H, W))
-gt_image = img_tensor
-print("gt_image stats:", gt_image.min().item(), gt_image.max().item())
-print("Any pixels rendered:", (gt_image > 0).sum().item())
+# # gt_image, dep = render_pointcloud(points, colors, cam_pose, K, (H, W))
+# gt_image = img_tensor
+# print("gt_image stats:", gt_image.min().item(), gt_image.max().item())
+# print("Any pixels rendered:", (gt_image > 0).sum().item())
 
-gt_image_np = gt_image.detach().cpu().numpy()
-print(f'save debug img.')
-plt.imsave("debug_gt_image.png", gt_image_np)
+# gt_image_np = gt_image.detach().cpu().numpy()
+# print(f'save debug img.')
+# plt.imsave("debug_gt_image.png", gt_image_np)
 
 
 x = torch.cat([points, colors], dim=1) # [N,6], x includes x and c
@@ -251,11 +251,6 @@ for epoch in pbar:
             x_noisy_full,
             epsilon,
             normals,
-            H,
-            W,
-            K,
-            cam_pose_0,
-            gt_image,
             is_a100,
             weight_sdf,
             weight_zero,

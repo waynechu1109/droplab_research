@@ -9,7 +9,6 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt 
 from PIL import Image
 import glob
-import faiss
 from scipy.spatial import cKDTree
 from scipy.ndimage import gaussian_filter
 
@@ -68,24 +67,29 @@ points = np.stack([grid_x, grid_y, grid_z], axis=-1).reshape(-1, 3)  # [N, 3]
 N = points.shape[0]
 
 # === KNN assign color ===
-print("Assigning colors via KNN...")
-pc_xyz_f32 = np.ascontiguousarray(pc_xyz.astype('float32'))  # xyz of pcd
-points_f32 = np.ascontiguousarray(points.astype('float32'))  # grid
+print("Assigning colors via PyTorch cdist (GPU)...")
 
-index = faiss.IndexFlatL2(3)
+# convert to tensor
+pc_xyz_torch = torch.tensor(pc_xyz, dtype=torch.float32, device='cuda')   # [N1, 3]
+points_torch = torch.tensor(points, dtype=torch.float32, device='cuda')   # [N2, 3]
 
-batch_size_add = 500_000
-n = pc_xyz_f32.shape[0]
-for i in range(0, n, batch_size_add):
-    end = min(i+batch_size_add, n)
-    index.add(pc_xyz_f32[i:end])
+# compute pairwise distance
+batch_size = 3500
+grid_rgb = torch.zeros((points_torch.shape[0], 3), device='cuda')
 
-batch_size_knn = 50000  # adjust based in vram usage
-grid_rgb = np.zeros((points_f32.shape[0], 3), dtype=np.float32) # initialize grid's color
-for i in tqdm(range(0, points_f32.shape[0], batch_size_knn), desc="KNN color"):
-    end = min(i+batch_size_knn, points_f32.shape[0])
-    dists, idxs = index.search(points_f32[i:end], 1)
-    grid_rgb[i:end] = pc_rgb[idxs.squeeze()]
+for i in tqdm(range(0, points_torch.shape[0], batch_size), desc="KNN torch"):
+    end = min(i + batch_size, points_torch.shape[0])
+    batch_points = points_torch[i:end]  # [B, 3]
+    
+    # 距離矩陣： [B, N1]
+    dists = torch.cdist(batch_points, pc_xyz_torch)  
+    idxs = torch.argmin(dists, dim=1)  # [B]
+
+    # 查顏色
+    batch_rgb = torch.tensor(pc_rgb[idxs.cpu().numpy()], device='cuda')
+    grid_rgb[i:end] = batch_rgb
+
+grid_rgb = grid_rgb.cpu().numpy() 
 
 # === Query SDF in 6D ===
 print("Querying SDF in 6D...")
@@ -144,7 +148,7 @@ if slice:
     def save_slice_with_axes(img, path, axis_label):
         plt.figure(figsize=(6, 5))
 
-        vmin, vmax = 0, 3
+        vmin, vmax = 0, 1
     
         # 顯示背景色圖
         im = plt.imshow(img, cmap='RdBu', vmin=vmin, vmax=vmax, origin='lower')

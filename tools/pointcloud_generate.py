@@ -14,8 +14,10 @@ import trimesh
 import argparse
 import json
 import glob
+import os
 
 VIS = False
+Downsample_pcd = True
 
 def contrast_enhance(colors):
     # colors: [N, 3], assumed in [0,255]
@@ -43,34 +45,55 @@ def save_colored_ply(filename, points, colors):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Dust3r inference and point cloud downsampling')
-    parser.add_argument('--max_points', type=int, default=75000,
+    parser.add_argument('--max_points', type=int, default=200000,
                         help='the max number of points after downsample')
     parser.add_argument('--voxel_size', type=float, default=0.00001,
-                        help='Voxel Grid 大小，建議佔 bbox 對角線的 1% 左右')
+                        help='Voxel Grid Size')
     parser.add_argument('--file', type=str, help="File name to render.")
+    parser.add_argument('--concave', type=str, default='convex',
+                        help="The scene is concave or convex.")
     args = parser.parse_args()
 
     file_name = args.file
 
-    image_candidates = glob.glob(f"../data/{file_name}.jpg") + glob.glob(f"../data/{file_name}.png")
-    if len(image_candidates) == 0:
-        raise FileNotFoundError(f"No image found for {file_name}.jpg or .png in ../data/")
-    print("Successfully read input image.")
-    img_path = image_candidates[0]
+    concave = args.concave
+    if concave != 'concave' and concave != 'convex':
+        print('Incorrect arguments, only concave or convex is accepted.')
 
-    images_list = [
-        # f'../data/dtu_scan24/images/{num:06d}.png'
-        # for num in range(1,48,5)
+    image_candidates = []
 
-        image_candidates[0],
-        image_candidates[0]
-    ]
+    target_path = os.path.join("../data", file_name)
+
+    if os.path.isdir(target_path):
+        image_candidates = sorted(
+            glob.glob(os.path.join(target_path, "*.jpg")) +
+            glob.glob(os.path.join(target_path, "*.png"))
+        )
+        if len(image_candidates) == 0:
+            raise FileNotFoundError(f"No images found in directory {target_path}")
+    else:
+        # Assume file_name is base name of an image without extension
+        for ext in ["jpg", "png"]:
+            candidate = os.path.join("../data", f"{file_name}.{ext}")
+            if os.path.isfile(candidate):
+                image_candidates = [candidate]
+                break
+        if len(image_candidates) == 0:
+            raise FileNotFoundError(f"No image found for {file_name}.jpg or .png in ../data/")
+
+    print(f"Found {len(image_candidates)} image(s).")
+
+    images_list = image_candidates
+
+    # if there is only 1 image input, duplicate
+    if len(images_list) == 1:
+        images_list = [images_list[0], images_list[0]]
 
     device = 'cuda'
     batch_size = 1
     schedule = 'cosine'
     lr = 0.01
-    niter = 5000
+    niter = 2000
 
     # load the model
     model_name = "../dust3r/checkpoints/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth"
@@ -167,26 +190,40 @@ if __name__ == '__main__':
 
     all_pts3d = (all_pts3d - centre) / scale
 
-    # --- 下采樣開始 ---
-    # 隨機抽樣
-    N = all_pts3d.shape[0]
-    if N > args.max_points:
-        idx = np.random.choice(N, size=args.max_points, replace=False)
-        all_pts3d = all_pts3d[idx]
-        all_colors = all_colors[idx]
+    pcd = o3d.geometry.PointCloud()
 
     # Voxel Grid Down Sampling
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(all_pts3d)
-    # pcd.colors = o3d.utility.Vector3dVector(all_colors.astype(float))
-    pcd.colors = o3d.utility.Vector3dVector(all_colors.astype(float) / 255.0)
+    # pcd = o3d.geometry.PointCloud()
+    # pcd.points = o3d.utility.Vector3dVector(all_pts3d)
+    # # pcd.colors = o3d.utility.Vector3dVector(all_colors.astype(float))
+    # pcd.colors = o3d.utility.Vector3dVector(all_colors.astype(float) / 255.0)
 
-    # 先下採樣
-    pcd_down = pcd.voxel_down_sample(voxel_size=args.voxel_size)
+    if Downsample_pcd:
+        # 先下採樣
+        # --- 下采樣開始 ---
+        # 隨機抽樣
+        N = all_pts3d.shape[0]
+        if N > args.max_points:
+            idx = np.random.choice(N, size=args.max_points, replace=False)
+            all_pts3d = all_pts3d[idx]
+            all_colors = all_colors[idx]
+        pcd.points = o3d.utility.Vector3dVector(all_pts3d)
+        # pcd.colors = o3d.utility.Vector3dVector(all_colors.astype(float))
+        pcd.colors = o3d.utility.Vector3dVector(all_colors.astype(float) / 255.0)
+        pcd_down = pcd.voxel_down_sample(voxel_size=args.voxel_size)
+    else: 
+        pcd.points = o3d.utility.Vector3dVector(all_pts3d)
+        # pcd.colors = o3d.utility.Vector3dVector(all_colors.astype(float))
+        pcd.colors = o3d.utility.Vector3dVector(all_colors.astype(float) / 255.0)
+        pcd_down = pcd
 
     # 再估算法向量（重要！）
     pcd_down.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamKNN(knn=30))
     pcd_down.orient_normals_consistent_tangent_plane(k=30)
+
+    if concave:
+        # reverse the normals if in "concave" scene
+        pcd_down.normals = o3d.utility.Vector3dVector(-np.asarray(pcd_down.normals))
 
     # 離群點移除
     pcd_down, ind = pcd_down.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
